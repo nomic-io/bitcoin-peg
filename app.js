@@ -3,10 +3,9 @@ let coins = require('coins')
 let peg = require('.')
 
 let app = lotion({
-  p2pPort: 46656,
-  tendermintPort: 46657,
-  logTendermint: true,
-  devMode: true
+  p2pPort: 26656,
+  rpcPort: 26657,
+  initialState: {}
 })
 
 let bitcoinGenesis = {
@@ -21,4 +20,4 @@ let bitcoinGenesis = {
 
 app.use(peg(bitcoinGenesis))
 
-app.listen(8888).then((res) => console.log(res))
+app.start().then((res) => console.log(res))

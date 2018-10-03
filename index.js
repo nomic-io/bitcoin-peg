@@ -6,8 +6,13 @@ module.exports = function (startHeader) {
   // TODO: initialize blockchain at startup based on current state
   //       instead of on first transaction
   function chainTxHandler (state, tx) {
-    let chain = Blockchain({ store: state.chain })
-    chain.add(tx.headers)
+    try {
+      let chain = Blockchain({ store: state.chain })
+      chain.add(tx.headers)
+    } catch (err) {
+      console.log('!!!', err)
+      throw err
+    }
 
     // TODO: remove need for this by keeping length in array root obj in `merk`
     state.chainLength = state.chain.length

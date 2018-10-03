@@ -2,19 +2,30 @@ let { PeerGroup } = require('bitcoin-net')
 let Blockchain = require('blockchain-spv')
 let params = require('webcoin-bitcoin')
 let download = require('blockchain-download')
-let { get, post } = require('axios')
 let { connect } = require('lotion')
 
-const BATCH_SIZE = 400
+const BATCH_SIZE = 250
 
 async function main () {
-  let { state, send } = await connect('55c3b7cec02db58234f278c40dae33027fc263643f487b2438bbabb11cad47b9')
+  let gci = process.argv[2]
+  if (gci == null) {
+    console.error('usage: node relay.js <GCI>')
+    process.exit(1)
+  }
+
+  let { state, send } = await connect(gci)
   console.log('connected to peg zone network')
 
   async function getTip () {
-    let length = await state.chainLength
-    return state.chain[length - 1]
+    // console.log('getting chainLength')
+    let chain = await state.chain
+    console.log(chain.slice(-10))
+    // console.log('c', chain)
+    // console.log('chainLength:', chain.length)
+    return chain[chain.length - 1]
   }
+
+  params.net.staticPeers = [ 'localhost' ]
 
   let peers = PeerGroup(params.net)
   let chain = Blockchain({
@@ -37,6 +48,9 @@ async function main () {
     console.log('done syncing bitcoin blockchain')
     peers.close()
   })
+  peers.on('peer', () => {
+    // console.log(`connected to ${peers.peers.length} peers`)
+  })
 
   let submitting = false
   chain.on('headers', async () => {
@@ -51,14 +65,18 @@ async function main () {
         for (let i = 0; i < headers.length; i += BATCH_SIZE) {
           let subset = headers.slice(i, i + BATCH_SIZE)
           let res = await send({ type: 'chain', headers: subset })
-          console.log(res)
-          if (res.result.check_tx.code !== 0) throw Error(res.result.check_tx.log)
+          if (res.check_tx.code) {
+            console.log(res, res.check_tx)
+            throw Error(res.check_tx.log)
+          }
 
           tip = await getTip()
           console.log(`peg zone SPV: ${tip.height}, local SPV: ${chain.height()}`)
         }
       }
-    } catch (err) {} finally {
+    } catch (err) {
+      console.log(err)
+    } finally {
       submitting = false
     }
   })
