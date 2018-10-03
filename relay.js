@@ -1,8 +1,15 @@
-let { PeerGroup } = require('bitcoin-net')
-let Blockchain = require('blockchain-spv')
-let params = require('webcoin-bitcoin')
-let download = require('blockchain-download')
-let { connect } = require('lotion')
+'use strict'
+
+const chalk = require('chalk')
+const cliSpinners = require('cli-spinners')
+const diffy = require('diffy')()
+const trim = require('diffy/trim')
+
+const { PeerGroup } = require('bitcoin-net')
+const Blockchain = require('blockchain-spv')
+const params = require('webcoin-bitcoin')
+const download = require('blockchain-download')
+const { connect } = require('lotion')
 
 const BATCH_SIZE = 250
 
@@ -13,8 +20,50 @@ async function main () {
     process.exit(1)
   }
 
+  params.net.staticPeers = [ 'localhost' ]
+  let peers = PeerGroup(params.net)
+  let chain = Blockchain({
+    indexed: true,
+    start: {
+      height: 0,
+      version: 1,
+      prevHash: Buffer.alloc(32),
+      merkleRoot: Buffer.from('4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b', 'hex').reverse(),
+      timestamp: 1231006505,
+      bits: 0x1d00ffff,
+      nonce: 2083236893
+    }
+  })
+
+  let lcConnected = false
+
+  diffy.render(() => {
+    let lcStatus = lcConnected ?
+      trim(`
+        Connected to ${chalk.green('???')}
+        ${chalk.gray('HEIGHT:')} ${Math.random()}
+      `) :
+      `${spinner()} Connecting...`
+
+    let btcStatus = peers.peers.length > 0 ?
+      trim(`
+        Connected to ${chalk.green(Math.min(peers.peers.length, 8) + ' peers')}
+        ${chalk.gray('HEIGHT:')} ${chain.height()}
+      `) :
+      `${spinner()} Connecting...`
+
+    return trim(`
+      ${chalk.bold('LOTION LIGHT CLIENT')}
+      ${lcStatus}
+
+      ${chalk.bold('BITCOIN SPV CLIENT')}
+      ${btcStatus}
+    `) + '\n'
+  })
+  setInterval(() => diffy.render(), 100)
+
   let { state, send } = await connect(gci)
-  console.log('connected to peg zone network')
+  lcConnected = true
 
   async function getTip () {
     // console.log('getting chainLength')
@@ -25,27 +74,9 @@ async function main () {
     return chain[chain.length - 1]
   }
 
-  params.net.staticPeers = [ 'localhost' ]
-
-  let peers = PeerGroup(params.net)
-  let chain = Blockchain({
-    indexed: true,
-    start: {
-      height: 0,
-      version: 1,
-      prevHash: Buffer(32),
-      merkleRoot: Buffer.from('4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b', 'hex').reverse(),
-      timestamp: 1231006505,
-      bits: 0x1d00ffff,
-      nonce: 2083236893
-    }
-  })
   peers.connect()
   peers.once('peer', async (peer) => {
-    console.log('connected to bitcoin network')
-    console.log('syncing bitcoin blockchain')
     await download(chain, peers)
-    console.log('done syncing bitcoin blockchain')
     peers.close()
   })
   peers.on('peer', () => {
@@ -86,3 +117,10 @@ async function main () {
 }
 
 main().catch(function (err) { throw err })
+
+function spinner () {
+  let { frames, interval } = cliSpinners.dots
+  let i = Math.floor(Date.now() / interval)
+  let frame = frames[i % frames.length]
+  return chalk.cyan.bold(frame)
+}
