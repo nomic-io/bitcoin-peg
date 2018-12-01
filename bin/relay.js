@@ -16,6 +16,11 @@ async function main () {
   let { state, send } = await connect(gci)
   console.log('connected to peg zone network')
 
+  send({
+    type: 'bitcoin',
+    foo: 123
+  })
+
   async function getTip () {
     // console.log('getting chainLength')
     let chain = await state.chain

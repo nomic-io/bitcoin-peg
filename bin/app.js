@@ -1,6 +1,6 @@
 let lotion = require('lotion')
 let coins = require('coins')
-let peg = require('.')
+let bitcoin = require('../src/index.js')
 
 let app = lotion({
   p2pPort: 26656,
@@ -18,6 +18,10 @@ let bitcoinGenesis = {
   nonce: 2083236893
 }
 
-app.use(peg(bitcoinGenesis))
+app.use('bitcoin', bitcoin(bitcoinGenesis))
+
+// app.use('pbtc', coins({
+//   modules: { peg: bitcoin.coinsModule() }
+// }))
 
 app.start().then((res) => console.log(res))
