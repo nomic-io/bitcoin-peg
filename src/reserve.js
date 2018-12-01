@@ -2,7 +2,7 @@
 
 let { script } = require('bitcoinjs-lib')
 
-const firstValidator = (pubkey, votingPower) => `
+const firstSignatory = ({ pubkey, votingPower }) => `
   OP_PUSHDATA1 21 ${pubkey} OP_CHECKSIG
   OP_IF
     ${uint16(votingPower)}
@@ -11,7 +11,7 @@ const firstValidator = (pubkey, votingPower) => `
   OP_ENDIF
 `
 
-const nthValidator = (pubkey, votingPower) => `
+const nthSignatory = ({ pubkey, votingPower }) => `
   OP_SWAP
   OP_PUSHDATA1 21 ${pubkey} OP_CHECKSIG
   OP_IF
@@ -35,19 +35,16 @@ function uint16 (n) {
   return `OP_PUSHDATA2 ${n.toString(16).padStart(4, '0')}`
 }
 
-function createWitnessScript (validators) {
-  let keys = Object.keys(validators)
-  keys.sort((a, b) => validators[b] - validators[a])
-
-  let values = Object.values(validators)
-  let totalVotingPower = values.reduce((a, b) => a + b, 0)
-  let twoThirdsVotingPower = Math.ceil(totalVotingPower * (2 / 3))
+function createWitnessScript (signatories) {
+  let totalVotingPower = signatories.reduce((sum, s) => sum + s.votingPower, 0)
+  let twoThirdsVotingPower = Math.ceil(totalVotingPower * 2 / 3)
 
   let asm = `
-    ${firstValidator(keys[0], validators[keys[0]])}
-    ${keys.slice(1)
-      .map((key) => nthValidator(key, validators[key]))
-      .join('\n')}
+    ${firstSignatory(signatories[0])}
+    ${signatories
+        .slice(1)
+        .map(nthSignatory)
+        .join('\n')}
     ${compare(twoThirdsVotingPower)}
   `
 

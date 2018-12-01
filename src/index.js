@@ -5,33 +5,16 @@ const proofs = require('bitcoin-merkle-proof')
 const coins = require('coins')
 const ed25519 = require('supercop.js')
 // TODO: try to load native ed25519 module
+const { getSignatorySet } = require('./deposit.js')
 
 const MAX_SIGNATORIES = 76
 const SIGNATORY_KEY_LENGTH = 33
 const SIGNATURE_LENGTH = 64
 
-function getSignatorySet (validators) {
-  let entries = Object.entries(validators)
-  entries.sort((a, b) => {
-    // sort by voting power, breaking ties with pubkey
-    let cmp = b[1] - a[1]
-    if (cmp === 0) {
-      cmp = b[0] < a[0] ? 1 : -1
-    }
-    return cmp
-  })
-  return entries
-    .map(([ pubkey ]) => pubkey)
-    .slice(0, MAX_SIGNATORIES)
-}
-
 module.exports = function (initialHeader) {
   // TODO: use nested routing for different tx types
 
   function txHandler (state, tx, context) {
-    console.log('tx', tx)
-    console.log('validators', context.validators)
-
     if (tx.headers) {
       // headers tx, add headers to chain
       headersTx(state, tx, context)
