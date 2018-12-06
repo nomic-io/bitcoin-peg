@@ -5,9 +5,8 @@ const proofs = require('bitcoin-merkle-proof')
 const coins = require('coins')
 const ed25519 = require('supercop.js')
 // TODO: try to load native ed25519 module
-const { getSignatorySet } = require('./deposit.js')
+const { getSignatorySet } = require('./reserve.js')
 
-const MAX_SIGNATORIES = 76
 const SIGNATORY_KEY_LENGTH = 33
 const SIGNATURE_LENGTH = 64
 
