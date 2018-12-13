@@ -4,14 +4,16 @@ let params = require('webcoin-bitcoin')
 let download = require('blockchain-download')
 let Inventory = require('bitcoin-inventory')
 let Filter = require('bitcoin-filter')
-let { connect } = require('lotion')
+let connect = require('lotion-connect')
 let encodeTx = require('bitcoin-protocol').types.transaction.encode
 let buildMerkleProof = require('bitcoin-merkle-proof').build
+let deposit = require('../src/deposit.js')
 
 // TODO: get this from somewhere else
 let { getTxHash } = require('bitcoin-net/lib/utils.js')
 
-const BATCH_SIZE = 250
+const HEADER_BATCH_SIZE = 250
+const SCAN_BATCH_SIZE = 5
 
 async function main () {
   let gci = process.argv[2]
@@ -20,15 +22,107 @@ async function main () {
     process.exit(1)
   }
 
-  let { state, send } = await connect(gci)
+  let pegClient = await connect(gci)
   console.log('connected to peg zone network')
 
   async function getTip () {
-    // console.log('getting chainLength')
-    let chain = await state.bitcoin.chain
-    // console.log('c', chain)
-    // console.log('chainLength:', chain.length)
-    return chain[chain.length - 1]
+    let length = await pegClient.state.bitcoin.chain.length
+    return pegClient.state.bitcoin.chain[length - 1]
+  }
+
+  let tipHeader = await getTip()
+  let startHeader = await pegClient.state.bitcoin.chain[0]
+  // scan starting 10 blocks ago, without going past checkpoint height
+  let scanHeight = Math.max(
+    tipHeader.height - 10,
+    startHeader.height
+  )
+  async function scanForDeposits () {
+    console.log('scanForDeposits', scanHeight)
+
+    let { processedTxs, signatoryKeys } = await pegClient.state.bitcoin
+    let validators = pegClient.validators.reduce((obj, v) => {
+      obj[v.pub_key.value] = v.voting_power
+      return obj
+    }, {})
+
+    let p2ss = deposit.createOutput(validators, signatoryKeys)
+    // TODO: reset filter
+    // TODO: add p2ss to filter
+    // filter.add(p2ss)
+
+    let headers = []
+    let endHeight = Math.min(
+      scanHeight + SCAN_BATCH_SIZE,
+      tipHeader.height,
+      chain.height()
+    )
+    for (let i = scanHeight; i < endHeight; i++) {
+      let header = chain.getByHeight(i)
+      headers.push(header)
+    }
+    let blockHashes = headers.map(Blockchain.getHash)
+
+    // TODO: filter so we don't have to download whole blocks
+    peers.getBlocks(blockHashes, (err, blocks) => {
+      if (err) {
+        // retry
+        // TODO: debug log
+        setTimeout(scanForDeposits, 1000)
+        return
+      }
+
+      let height = scanHeight - 1
+      for (let block of blocks) {
+        height += 1
+        let hashes = []
+        let include = []
+        for (let tx of block.transactions) {
+          let txid = getTxHash(tx)
+          let txidBase64 = tx.toString('base64')
+          hashes.push(txid)
+          if (!isDepositTx(tx, p2ss)) continue
+          if (processedTxs[txidBase64]) continue
+          include.push(txid)
+        }
+
+        console.log('found ' + include.length + ' txs')
+
+        if (include.length === 0) {
+          // no unprocessed deposit txs in this block
+          scanHeight = height
+          continue
+        }
+
+        let proof = buildMerkleProof({ hashes, include })
+
+        // sanity check
+        if (!proof.merkleRoot.equals(tip.merkleRoot)) {
+          throw Error('Assertion error: merkle root mismatch')
+        }
+
+        // nodes verify against merkleRoot of stored header
+        delete proof.merkleRoot
+
+        let txBytes = block.transactions.map(encodeTx)
+
+        pegClient.send({
+          type: 'bitcoin',
+          height,
+          proof,
+          transactions: txBytes
+        }).then((res) => {
+          console.log('relayed txs', res)
+        })
+
+        scanHeight = height
+      }
+
+      if (scanHeight < tipHeader.height) {
+        // continue scanning
+        scanForDeposits()
+      }
+    })
   }
 
   params.net.staticPeers = [ 'localhost' ]
@@ -36,96 +130,71 @@ async function main () {
   let peers = PeerGroup(params.net)
   let inventory = Inventory(peers)
   // let filter = Filter(peers)
-  // filter.add(Buffer.alloc(1))
   let chain = Blockchain({
     indexed: true,
-    start: await state.bitcoin.chain[0]
+    start: startHeader
   })
   peers.connect()
-  peers.once('peer', async (peer) => {
+
+  peers.on('peer', startSync)
+  function startSync (peer) {
+    if (peers.peers.length < 5) return
+    peers.removeListener('peer', startSync)
+
     console.log('connected to bitcoin network')
-
-    let tip = await getTip()
-
-    let blockHash = Blockchain.getHash(tip)
-    peers.getBlocks([ blockHash ], (err, blocks) => {
-      console.log('getBlocks', err, blocks)
-
-      let block = blocks[0]
-
-      let hashes = []
-      let include = []
-      for (let tx of block.transactions) {
-        let txid = getTxHash(tx)
-        hashes.push(txid)
-        // TODO: only push relevant txs to include
-        include.push(txid)
-      }
-      let proof = buildMerkleProof({ hashes, include })
-
-      // sanity check
-      if (!proof.merkleRoot.equals(tip.merkleRoot)) {
-        throw Error('Assertion error: merkle root mismatch')
-      }
-
-      // nodes verify against merkleRoot of stored header,
-      // we just specify height
-      delete proof.merkleRoot
-      proof.height = tip.height
-
-      let txBytes = encodeTx(block.transactions[0])
-
-      console.log('relaying', proof, txBytes)
-
-      send({
-        type: 'bitcoin',
-        proof,
-        transaction: txBytes
-      }).then((res) => {
-        console.log('relayed tx', res)
-      })
+    console.log('syncing bitcoin blockchain')
+    download(chain, peers).then(() => {
+      console.log('done syncing bitcoin blockchain')
     })
+  }
 
-    // console.log('syncing bitcoin blockchain')
-    // await download(chain, peers)
-    // console.log('done syncing bitcoin blockchain')
+  let submittingHeaders = false
+  chain.on('headers', async (headers) => {
+    console.log('headers', chain.height())
+
+    if (submittingHeaders) return
+    submittingHeaders = true
+
+    try {
+      let tip = await getTip()
+      console.log(`peg zone SPV: ${tip.height}, local SPV: ${chain.height()}`)
+      while (chain.height() > tip.height) {
+        let headers = chain.store.slice(tip.height - chain.store[0].height + 1)
+        for (let i = 0; i < headers.length; i += HEADER_BATCH_SIZE) {
+          let subset = headers.slice(i, i + HEADER_BATCH_SIZE)
+          let res = await pegClient.send({ type: 'bitcoin', headers: subset })
+          if (res.check_tx.code) {
+            console.log(res, res.check_tx)
+            throw Error(res.check_tx.log)
+          }
+
+          tip = await getTip()
+          console.log(`peg zone SPV: ${tip.height}, local SPV: ${chain.height()}`)
+        }
+      }
+
+      if (chain.height() === tip.height) {
+        console.log('done relaying headers')
+        scanForDeposits()
+      }
+    } catch (err) {
+      console.log(err)
+    } finally {
+      submittingHeaders = false
+    }
   })
 
-  // chain.on('headers', (headers) => {
-  //   console.log('headers', chain.height())
-  // })
-  //
-  // let submitting = false
-  // chain.on('headers', async () => {
-  //   if (submitting) return
-  //   submitting = true
-  //
-  //   try {
-  //     let tip = await getTip()
-  //     console.log(`peg zone SPV: ${tip.height}, local SPV: ${chain.height()}`)
-  //     while (chain.height() > tip.height) {
-  //       let headers = chain.store.slice(tip.height - chain.store[0].height + 1)
-  //       for (let i = 0; i < headers.length; i += BATCH_SIZE) {
-  //         let subset = headers.slice(i, i + BATCH_SIZE)
-  //         let res = await send({ type: 'bitcoin', headers: subset })
-  //         if (res.check_tx.code) {
-  //           console.log(res, res.check_tx)
-  //           throw Error(res.check_tx.log)
-  //         }
-  //
-  //         tip = await getTip()
-  //         console.log(`peg zone SPV: ${tip.height}, local SPV: ${chain.height()}`)
-  //       }
-  //     }
-  //   } catch (err) {
-  //     console.log(err)
-  //   } finally {
-  //     submitting = false
-  //   }
-  // })
-  // chain.on('reorg', (e) => {
-  //   console.log('reorg!!', e)
-  // })
+  chain.on('reorg', (e) => {
+    console.log('reorg!!', e)
+  })
+}
+
+function isDepositTx (tx, p2ss) {
+  if (tx.outs.length !== 2) return false
+  if (!tx.outs[0].script.equals(p2ss)) return false
+  // TODO: check 2nd output is correct format
+  // TODO: other checks?
+  return true
 }
 
 main().catch(function (err) { throw err })
