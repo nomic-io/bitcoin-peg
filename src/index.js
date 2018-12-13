@@ -60,13 +60,12 @@ module.exports = function (initialHeader) {
 
     // get validator's public key
     let signatorySet = getSignatorySet(context.validators)
-    let validatorKeyBase64 = signatorySet[signatoryIndex]
+    let validatorKeyBase64 = signatorySet[signatoryIndex].validatorKey
     if (validatorKeyBase64 == null) {
       throw Error('Invalid signatory index')
     }
-    let validatorKey = Buffer.from(validatorKeyHex, 'base64')
+    let validatorKey = Buffer.from(validatorKeyBase64, 'base64')
 
-    // verify signatory key was signed by validator key
     if (!ed25519.verify(signature, signatoryKey, validatorKey)) {
       throw Error('Invalid signature')
     }
