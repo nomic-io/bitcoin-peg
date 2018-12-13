@@ -2,7 +2,14 @@ let { PeerGroup } = require('bitcoin-net')
 let Blockchain = require('blockchain-spv')
 let params = require('webcoin-bitcoin')
 let download = require('blockchain-download')
+let Inventory = require('bitcoin-inventory')
+let Filter = require('bitcoin-filter')
 let { connect } = require('lotion')
+let encodeTx = require('bitcoin-protocol').types.transaction.encode
+let buildMerkleProof = require('bitcoin-merkle-proof').build
+
+// TODO: get this from somewhere else
+let { getTxHash } = require('bitcoin-net/lib/utils.js')
 
 const BATCH_SIZE = 250
 
@@ -16,15 +23,9 @@ async function main () {
   let { state, send } = await connect(gci)
   console.log('connected to peg zone network')
 
-  send({
-    type: 'bitcoin',
-    foo: 123
-  })
-
   async function getTip () {
     // console.log('getting chainLength')
-    let chain = await state.chain
-    console.log(chain.slice(-10))
+    let chain = await state.bitcoin.chain
     // console.log('c', chain)
     // console.log('chainLength:', chain.length)
     return chain[chain.length - 1]
@@ -33,61 +34,98 @@ async function main () {
   params.net.staticPeers = [ 'localhost' ]
 
   let peers = PeerGroup(params.net)
+  let inventory = Inventory(peers)
+  // let filter = Filter(peers)
+  // filter.add(Buffer.alloc(1))
   let chain = Blockchain({
     indexed: true,
-    start: {
-      height: 0,
-      version: 1,
-      prevHash: Buffer(32),
-      merkleRoot: Buffer.from('4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b', 'hex').reverse(),
-      timestamp: 1231006505,
-      bits: 0x1d00ffff,
-      nonce: 2083236893
-    }
+    start: await state.bitcoin.chain[0]
   })
   peers.connect()
   peers.once('peer', async (peer) => {
     console.log('connected to bitcoin network')
-    console.log('syncing bitcoin blockchain')
-    await download(chain, peers)
-    console.log('done syncing bitcoin blockchain')
-    peers.close()
-  })
-  peers.on('peer', () => {
-    // console.log(`connected to ${peers.peers.length} peers`)
-  })
 
-  let submitting = false
-  chain.on('headers', async () => {
-    if (submitting) return
-    submitting = true
+    let tip = await getTip()
 
-    try {
-      let tip = await getTip()
-      console.log(`peg zone SPV: ${tip.height}, local SPV: ${chain.height()}`)
-      while (chain.height() > tip.height) {
-        let headers = chain.store.slice(tip.height - chain.store[0].height + 1)
-        for (let i = 0; i < headers.length; i += BATCH_SIZE) {
-          let subset = headers.slice(i, i + BATCH_SIZE)
-          let res = await send({ type: 'chain', headers: subset })
-          if (res.check_tx.code) {
-            console.log(res, res.check_tx)
-            throw Error(res.check_tx.log)
-          }
+    let blockHash = Blockchain.getHash(tip)
+    peers.getBlocks([ blockHash ], (err, blocks) => {
+      console.log('getBlocks', err, blocks)
 
-          tip = await getTip()
-          console.log(`peg zone SPV: ${tip.height}, local SPV: ${chain.height()}`)
-        }
+      let block = blocks[0]
+
+      let hashes = []
+      let include = []
+      for (let tx of block.transactions) {
+        let txid = getTxHash(tx)
+        hashes.push(txid)
+        // TODO: only push relevant txs to include
+        include.push(txid)
       }
-    } catch (err) {
-      console.log(err)
-    } finally {
-      submitting = false
-    }
+      let proof = buildMerkleProof({ hashes, include })
+
+      // sanity check
+      if (!proof.merkleRoot.equals(tip.merkleRoot)) {
+        throw Error('Assertion error: merkle root mismatch')
+      }
+
+      // nodes verify against merkleRoot of stored header,
+      // we just specify height
+      delete proof.merkleRoot
+      proof.height = tip.height
+
+      let txBytes = encodeTx(block.transactions[0])
+
+      console.log('relaying', proof, txBytes)
+
+      send({
+        type: 'bitcoin',
+        proof,
+        transaction: txBytes
+      }).then((res) => {
+        console.log('relayed tx', res)
+      })
+    })
+
+    // console.log('syncing bitcoin blockchain')
+    // await download(chain, peers)
+    // console.log('done syncing bitcoin blockchain')
   })
-  chain.on('reorg', (e) => {
-    console.log('reorg', e)
-  })
+
+  // chain.on('headers', (headers) => {
+  //   console.log('headers', chain.height())
+  // })
+  //
+  // let submitting = false
+  // chain.on('headers', async () => {
+  //   if (submitting) return
+  //   submitting = true
+  //
+  //   try {
+  //     let tip = await getTip()
+  //     console.log(`peg zone SPV: ${tip.height}, local SPV: ${chain.height()}`)
+  //     while (chain.height() > tip.height) {
+  //       let headers = chain.store.slice(tip.height - chain.store[0].height + 1)
+  //       for (let i = 0; i < headers.length; i += BATCH_SIZE) {
+  //         let subset = headers.slice(i, i + BATCH_SIZE)
+  //         let res = await send({ type: 'bitcoin', headers: subset })
+  //         if (res.check_tx.code) {
+  //           console.log(res, res.check_tx)
+  //           throw Error(res.check_tx.log)
+  //         }
+  //
+  //         tip = await getTip()
+  //         console.log(`peg zone SPV: ${tip.height}, local SPV: ${chain.height()}`)
+  //       }
+  //     }
+  //   } catch (err) {
+  //     console.log(err)
+  //   } finally {
+  //     submitting = false
+  //   }
+  // })
+  // chain.on('reorg', (e) => {
+  //   console.log('reorg!!', e)
+  // })
 }
 
 main().catch(function (err) { throw err })
