@@ -8,17 +8,17 @@ let app = lotion({
   initialState: {}
 })
 
-let bitcoinGenesis = {
-  height: 0,
-  version: 1,
-  prevHash: Buffer(32),
-  merkleRoot: Buffer.from('4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b', 'hex').reverse(),
-  timestamp: 1231006505,
-  bits: 0x1d00ffff,
-  nonce: 2083236893
+let checkpoint = {
+  version: 536870912,
+  prevHash: Buffer.from('e2acb3e71e4e443af48e81d381dea7d35e2e8d5e69fe15000000000000000000', 'hex'),
+  merkleRoot: Buffer.from('7f2ada224dc4afba6ca37010b099c02322cb5df24fcedb0ff5b87fb3ca64eeae', 'hex'),
+  timestamp: 1543838368,
+  bits: 389142908,
+  nonce: 512160369,
+  height: 552384
 }
 
-app.use('bitcoin', bitcoin(bitcoinGenesis, 'pbtc'))
+app.use('bitcoin', bitcoin(checkpoint, 'pbtc'))
 
 app.use('pbtc', coins())
 
