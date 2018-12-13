@@ -18,10 +18,9 @@ let bitcoinGenesis = {
   nonce: 2083236893
 }
 
-app.use('bitcoin', bitcoin(bitcoinGenesis))
+app.use('bitcoin', bitcoin(bitcoinGenesis, 'pbtc'))
 
-// app.use('pbtc', coins({
-//   modules: { peg: bitcoin.coinsModule() }
-// }))
+app.use('pbtc', coins())
 
-app.start().then((res) => console.log(res))
+app.start()
+  .then((res) => console.log(res))
