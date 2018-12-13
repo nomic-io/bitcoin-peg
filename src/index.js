@@ -5,8 +5,10 @@ const verifyMerkleProof = require('bitcoin-merkle-proof').verify
 const protocol = require('bitcoin-protocol')
 const coins = require('coins')
 const ed25519 = require('supercop.js')
+const bitcoin = require('bitcoinjs-lib')
 // TODO: try to load native ed25519 module
 const { getSignatorySet } = require('./reserve.js')
+const deposit = require('./deposit.js')
 
 // TODO: get this from somewhere else
 const { getTxHash } = require('bitcoin-net/lib/utils.js')
@@ -58,11 +60,30 @@ module.exports = function (initialHeader, coinName) {
     let bitcoinTx = protocol.types.transaction.decode(txBytes)
 
     // verify tx format
-    // TODO: 2 outputs, pays to signatory set, commits to address
+    // TODO: use a format that supports joining deposits for multiple people
+    if (tx.outs.length !== 2) {
+      throw Error('Deposit tx should have exactly 2 outputs')
+    }
+    // verify first output pays to signatory set
+    // TODO: compare against older validator sets
+    let expectedP2ss = deposit.createOutput(context.validators, state.signatorySet)
+    let depositOutput = tx.outs[0]
+    if (!depositOutput.script.equals(expectedP2ss)) {
+      throw Error('Invalid deposit output')
+    }
+    // verify second output commits to recipient address
+    let commitmentOutput = bitcoin.payments.embed(tx.outs[1])
+    if (commitmentOutput.data.length !== 20) {
+      throw Error('Invalid recipient address commitment output')
+    }
 
     // get hash of tx
     let txid = getTxHash(bitcoinTx)
     let txidBase64 = txid.toString('base64')
+
+    // verify tx is confirmed deep enough
+    // TODO
+    // TODO: use heuristic based on value
 
     // verify tx hasn't already been processed
     if (state.processedTxs[txidBase64]) {
@@ -86,13 +107,13 @@ module.exports = function (initialHeader, coinName) {
       throw Error('Merkle proof does not match given transaction')
     }
 
-    // TODO: process tx
-
-    // let addressHash = tx.outs[1]
-    // console.log(addressHash)
-
-    // pay out to address
-    // context.modules[coinName].mint({ address, amount })
+    // mint satoshis for recipient address
+    let addressHash = commitmentOutput.data
+    context.modules[coinName].mint({
+      address: coins.hashToAddress(addressHash),
+      amount: depositOutput.value
+    })
+    console.log('minting ' + depositOutput.value + ' for ' + coins.hashToAddress(addressHash))
   }
 
   function signatoryKeyTx (state, tx, context) {
