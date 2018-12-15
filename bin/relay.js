@@ -1,6 +1,6 @@
 let { PeerGroup } = require('bitcoin-net')
 let Blockchain = require('blockchain-spv')
-let params = require('webcoin-bitcoin')
+let params = require('webcoin-bitcoin-testnet')
 let download = require('blockchain-download')
 let Inventory = require('bitcoin-inventory')
 let Filter = require('bitcoin-filter')
@@ -10,7 +10,7 @@ let buildMerkleProof = require('bitcoin-merkle-proof').build
 let deposit = require('../src/deposit.js')
 
 // TODO: get this from somewhere else
-let { getTxHash } = require('bitcoin-net/lib/utils.js')
+let { getTxHash } = require('bitcoin-net/src/utils.js')
 
 const HEADER_BATCH_SIZE = 250
 const SCAN_BATCH_SIZE = 5
@@ -57,7 +57,7 @@ async function main () {
       tipHeader.height,
       chain.height()
     )
-    for (let i = scanHeight; i < endHeight; i++) {
+    for (let i = scanHeight; i <= endHeight; i++) {
       let header = chain.getByHeight(i)
       headers.push(header)
     }
@@ -76,35 +76,41 @@ async function main () {
       for (let block of blocks) {
         height += 1
         let hashes = []
-        let include = []
+        let includeHashes = []
+        let includeTxs = []
         for (let tx of block.transactions) {
           let txid = getTxHash(tx)
           let txidBase64 = tx.toString('base64')
           hashes.push(txid)
           if (!isDepositTx(tx, p2ss)) continue
           if (processedTxs[txidBase64]) continue
-          include.push(txid)
+          includeHashes.push(txid)
+          includeTxs.push(tx)
         }
 
-        console.log('found ' + include.length + ' txs')
+        console.log('found ' + includeHashes.length + ' txs')
 
-        if (include.length === 0) {
+        if (includeHashes.length === 0) {
           // no unprocessed deposit txs in this block
           scanHeight = height
           continue
         }
 
-        let proof = buildMerkleProof({ hashes, include })
-
-        // sanity check
-        if (!proof.merkleRoot.equals(tip.merkleRoot)) {
-          throw Error('Assertion error: merkle root mismatch')
-        }
+        let proof = buildMerkleProof({ hashes, include: includeHashes })
 
         // nodes verify against merkleRoot of stored header
         delete proof.merkleRoot
 
-        let txBytes = block.transactions.map(encodeTx)
+        let txBytes = includeTxs.map((tx) => encodeTx(tx))
+        let decoded = require('bitcoin-protocol').types.transaction.decode(txBytes[0])
+        console.log('decoded', decoded)
+
+        console.log({
+          type: 'bitcoin',
+          height,
+          proof,
+          transactions: txBytes
+        })
 
         pegClient.send({
           type: 'bitcoin',
@@ -132,7 +138,9 @@ async function main () {
   // let filter = Filter(peers)
   let chain = Blockchain({
     indexed: true,
-    start: startHeader
+    start: startHeader,
+    // TODO: disable for mainnet
+    allowMinDifficultyBlocks: true
   })
   peers.connect()
 

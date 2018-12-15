@@ -1,6 +1,6 @@
 let { PeerGroup } = require('bitcoin-net')
 let Blockchain = require('blockchain-spv')
-let params = require('webcoin-bitcoin')
+let params = require('webcoin-bitcoin-testnet')
 let download = require('blockchain-download')
 
 async function main () {
@@ -10,16 +10,18 @@ async function main () {
   params.net.staticPeers = [ 'localhost' ]
 
   let peers = PeerGroup(params.net)
+  params.blockchain.genesisHeader.height = 0
   let chain = Blockchain({
     indexed: true,
+    allowMinDifficultyBlocks: true,
     start: {
-      height: 0,
-      version: 1,
-      prevHash: Buffer(32),
-      merkleRoot: Buffer.from('4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b', 'hex').reverse(),
-      timestamp: 1231006505,
-      bits: 0x1d00ffff,
-      nonce: 2083236893
+      version: 1073733632,
+      prevHash: Buffer.from('0000000000000113d4262419a8aa3a4fe928c0ea81893a2d2ffee5258b2085d8', 'hex').reverse(),
+      merkleRoot: Buffer.from('baa3bb3f4fb663bf6974831ff3d2c37479f471f1558447dfae92f146539f7d9f', 'hex').reverse(),
+      timestamp: 1544574033,
+      bits: 0x1a015269,
+      nonce: 3714016562,
+      height: 1447488
     }
   })
 

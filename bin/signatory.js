@@ -1,5 +1,6 @@
 'use strict'
 
+let { readFileSync } = require('fs')
 let { randomBytes, createHash } = require('crypto')
 let secp = require('secp256k1')
 let ed = require('ed25519-supercop')
@@ -26,7 +27,8 @@ async function main () {
   // pubkey
   let signatoryKey = secp.publicKeyCreate(privKey)
 
-  let validator = require(privValidatorPath)
+  let validatorJSON = readFileSync(privValidatorPath, 'utf8')
+  let validator = JSON.parse(validatorJSON)
   let validatorPriv = Buffer.from(validator.priv_key.value, 'base64')
   let validatorPub = Buffer.from(validator.pub_key.value, 'base64')
   let convertedPriv = convertEd25519(validatorPriv)
