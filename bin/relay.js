@@ -102,15 +102,6 @@ async function main () {
         delete proof.merkleRoot
 
         let txBytes = includeTxs.map((tx) => encodeTx(tx))
-        let decoded = require('bitcoin-protocol').types.transaction.decode(txBytes[0])
-        console.log('decoded', decoded)
-
-        console.log({
-          type: 'bitcoin',
-          height,
-          proof,
-          transactions: txBytes
-        })
 
         pegClient.send({
           type: 'bitcoin',

@@ -31,7 +31,6 @@ let checkpoint = {
 }
 
 app.use('bitcoin', bitcoin(checkpoint, 'pbtc'))
-
 app.use('pbtc', coins())
 
 app.start()
