@@ -15,7 +15,10 @@ function createOutput (validators, signatoryKeys) {
   // get signatory key for each signatory
   let signatories = getSignatorySet(validators)
     .map(({ validatorKey, votingPower }) => {
-      let pubkey = signatoryKeys[validatorKey].toString('hex')
+      let pubkey = signatoryKeys[validatorKey]
+      if (pubkey) {
+        pubkey = pubkey.toString('hex')
+      }
       return { pubkey, votingPower }
     })
     .filter((s) => s.pubkey != null)

@@ -11,7 +11,7 @@ const { getSignatorySet } = require('./reserve.js')
 const deposit = require('./deposit.js')
 
 // TODO: get this from somewhere else
-const { getTxHash } = require('bitcoin-net/lib/utils.js')
+const { getTxHash } = require('bitcoin-net/src/utils.js')
 
 const SIGNATORY_KEY_LENGTH = 33
 const SIGNATURE_LENGTH = 64
@@ -29,7 +29,7 @@ module.exports = function (initialHeader, coinName) {
     if (tx.headers) {
       // headers tx, add headers to chain
       headersTx(state, tx, context)
-    } else if (tx.transaction) {
+    } else if (tx.transactions) {
       // deposit tx, verify tx and collect UTXO(s)
       depositTx(state, tx, context)
     } else if (tx.signatoryKey) {
@@ -48,7 +48,11 @@ module.exports = function (initialHeader, coinName) {
   }
 
   function headersTx (state, tx, context) {
-    let chain = Blockchain({ store: state.chain })
+    let chain = Blockchain({
+      store: state.chain,
+      // TODO: disable for mainnet
+      allowMinDifficultyBlocks: true
+    })
     chain.add(tx.headers)
   }
 
@@ -90,14 +94,16 @@ module.exports = function (initialHeader, coinName) {
       }
       // verify first output pays to signatory set
       // TODO: compare against older validator sets
-      let expectedP2ss = deposit.createOutput(context.validators, state.signatorySet)
+      let expectedP2ss = deposit.createOutput(context.validators, state.signatoryKeys)
       let depositOutput = bitcoinTx.outs[0]
       if (!depositOutput.script.equals(expectedP2ss)) {
         throw Error('Invalid deposit output')
       }
       // verify second output commits to recipient address
-      let commitmentOutput = bitcoin.payments.embed(bitcoinTx.outs[1])
-      if (commitmentOutput.data.length !== 20) {
+      let addressHash = bitcoin.payments.embed({
+        output: bitcoinTx.outs[1].script
+      }).data[0]
+      if (addressHash.length !== 20) {
         throw Error('Invalid recipient address commitment output')
       }
 
@@ -106,12 +112,19 @@ module.exports = function (initialHeader, coinName) {
       // TODO: use heuristic based on value
 
       // mint satoshis for recipient address
-      let addressHash = commitmentOutput.data
       context.modules[coinName].mint({
+        type: 'accounts',
         address: coins.hashToAddress(addressHash),
         amount: depositOutput.value
       })
       console.log('minting ' + depositOutput.value + ' for ' + coins.hashToAddress(addressHash))
+
+      // add deposit outpoint to reserve wallet
+      state.utxos.push({
+        txid,
+        index: 0,
+        amount: depositOutput.value
+      })
     }
   }
 
@@ -154,27 +167,20 @@ module.exports = function (initialHeader, coinName) {
     state.signatoryKeys[validatorKeyBase64] = signatoryKey
   }
 
-  // peg handler for `coins`
-  let coinsModule = {
-    initialState: {
-      outputs: [],
-      amount: 0
-    },
-
-    // withdraw
-    onOutput () {
-      throw Error('Withdraw not yet implemented')
-    }
-  }
-
   return [
-    {
-      type: 'initializer',
-      middleware: initializer
-    },
-    {
-      type: 'tx',
-      middleware: txHandler
-    }
+    { type: 'initializer', middleware: initializer },
+    { type: 'tx', middleware: txHandler },
   ]
+  // return {
+  //   initializer,
+  //   txHandler,
+  //
+  //   // handler for 'coins'
+  //   coinHandler: () => ({
+  //     // withdraw
+  //     onOutput () {
+  //       throw Error('Withdraw not yet implemented')
+  //     }
+  //   })
+  // }
 }
