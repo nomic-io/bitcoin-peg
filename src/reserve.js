@@ -27,6 +27,17 @@ const compare = (threshold) => `
   OP_GREATERTHAN
 `
 
+function signature (signature) {
+  console.log('sig', signature)
+  if (signature == null) {
+    return 'OP_0'
+  }
+
+  return `
+    OP_PUSHDATA1 ${signature}
+  `
+}
+
 function uint16 (n) {
   if (!Number.isInteger(n)) {
     throw Error('Number must be an integer')
@@ -53,6 +64,18 @@ function createWitnessScript (signatories) {
         .map(nthSignatory)
         .join('\n')}
     ${compare(twoThirdsVotingPower)}
+  `
+
+  return script.fromASM(trim(asm))
+}
+
+function createScriptSig (signatures) {
+  let asm = `
+    OP_0
+
+    ${signatures
+        .map(signature)
+        .join('\n')}
   `
 
   return script.fromASM(trim(asm))
@@ -85,7 +108,7 @@ function getSignatorySet (validators) {
 }
 
 function buildOutgoingTx (signingTx, validators, signatoryKeys) {
-  let { inputs, outputs, signatures } = signingTx
+  let { inputs, outputs } = signingTx
 
   let tx = new Transaction()
   let totalAmount = 0
@@ -150,6 +173,7 @@ function createOutput (validators, signatoryKeys) {
 
 module.exports = {
   createWitnessScript,
+  createScriptSig,
   getSignatorySet,
   getVotingPowerThreshold,
   buildOutgoingTx,
