@@ -7,7 +7,7 @@ let Filter = require('bitcoin-filter')
 let connect = require('lotion-connect')
 let encodeTx = require('bitcoin-protocol').types.transaction.encode
 let buildMerkleProof = require('bitcoin-merkle-proof').build
-let { createOutput, createWitnessScript, createScriptSig, getSignatories, buildOutgoingTx } = require('../src/reserve.js')
+let { createOutput, createWitnessScript, createScriptSig, buildOutgoingTx } = require('../src/reserve.js')
 let bitcoin = require('bitcoinjs-lib')
 
 // TODO: get this from somewhere else
@@ -154,7 +154,7 @@ async function main () {
         console.log('Relaying tx that was signed by the signatory set')
         // TODO: put this somewhere else
         let tx = buildOutgoingTx(signedTx, validators, signatoryKeys)
-        let redeemScript = createWitnessScript(getSignatories(validators, signatoryKeys))
+        let redeemScript = createWitnessScript(validators, signatoryKeys)
         for (let i = 0; i < tx.ins.length; i++) {
           let signatures = getSignatures(signedTx.signatures, i)
           let scriptSig = createScriptSig(signatures)

@@ -52,7 +52,18 @@ function getVotingPowerThreshold (signatories) {
   return twoThirdsVotingPower
 }
 
-function createWitnessScript (signatories) {
+function createWitnessScript (validators, signatoryKeys) {
+  // get signatory key for each signatory
+  let signatories = getSignatorySet(validators)
+    .map(({ validatorKey, votingPower }) => {
+      let pubkey = signatoryKeys[validatorKey]
+      if (pubkey) {
+        pubkey = pubkey.toString('hex')
+      }
+      return { pubkey, votingPower }
+    })
+    .filter((s) => s.pubkey != null)
+
   let twoThirdsVotingPower = getVotingPowerThreshold(signatories)
 
   let asm = `
@@ -143,23 +154,9 @@ function buildOutgoingTx (signingTx, validators, signatoryKeys) {
   return tx
 }
 
-function getSignatories (validators, signatoryKeys) {
-  // get signatory key for each signatory
-  return getSignatorySet(validators)
-    .map(({ validatorKey, votingPower }) => {
-      let pubkey = signatoryKeys[validatorKey]
-      if (pubkey) {
-        pubkey = pubkey.toString('hex')
-      }
-      return { pubkey, votingPower }
-    })
-    .filter((s) => s.pubkey != null)
-}
-
 function createOutput (validators, signatoryKeys) {
   // p2ss = pay to signatory set
-  let signatories = getSignatories(validators, signatoryKeys)
-  let p2ss = createWitnessScript(signatories)
+  let p2ss = createWitnessScript(validators, signatoryKeys)
 
   return payments.p2wsh({
     redeem: { output: p2ss },
@@ -173,6 +170,5 @@ module.exports = {
   getSignatorySet,
   getVotingPowerThreshold,
   buildOutgoingTx,
-  getSignatories,
   createOutput
 }

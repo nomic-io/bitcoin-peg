@@ -6,8 +6,7 @@ let { connect } = require('lotion')
 let {
   buildOutgoingTx,
   getSignatorySet,
-  createWitnessScript,
-  getSignatories
+  createWitnessScript
 } = require('../src/reserve.js')
 
 async function main () {
@@ -54,7 +53,7 @@ async function main () {
   let bitcoinTx = buildOutgoingTx(signingTx, validators, signatoryKeys)
   console.log(bitcoinTx)
 
-  let p2ss = createWitnessScript(getSignatories(validators, signatoryKeys))
+  let p2ss = createWitnessScript(validators, signatoryKeys)
   let sigHashes = signingTx.inputs.map((input, i) =>
     bitcoinTx.hashForWitnessV0(i, p2ss, input.amount, bitcoin.Transaction.SIGHASH_ALL))
   let signatures = sigHashes.map((hash) => {

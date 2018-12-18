@@ -14,7 +14,6 @@ const {
   createWitnessScript,
   getSignatorySet,
   buildOutgoingTx,
-  getSignatories, // TODO: fix, this is weird
   createOutput,
   getVotingPowerThreshold
 } = require('./reserve.js')
@@ -243,7 +242,7 @@ module.exports = function (initialHeader, coinName) {
     // compute hashes that should have been signed
     let bitcoinTx = buildOutgoingTx(signingTx, context.validators, signatoryKeys)
     // TODO: handle dynamic signatory sets
-    let p2ss = createWitnessScript(getSignatories(context.validators, signatoryKeys))
+    let p2ss = createWitnessScript(context.validators, signatoryKeys)
     let sigHashes = signingTx.inputs.map((input, i) =>
       bitcoinTx.hashForWitnessV0(i, p2ss, input.amount, bitcoin.Transaction.SIGHASH_ALL))
 
