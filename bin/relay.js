@@ -167,9 +167,9 @@ async function main () {
           tx.setWitness(i, p2wsh.witness)
         }
 
-        console.log('built signed tx:', tx.toHex())
+        console.log('built signed tx')
         inventory.broadcast(tx)
-        console.log('broadcasting')
+        console.log('broadcasting', tx.getId())
       })
     })
   }
@@ -227,6 +227,7 @@ function getSignatures (signatures, index) {
   return signatures.map((sigs) => {
     if (sigs == null) return null
     return sigs[index].toString('hex')
+      + '01' // SIGHASH_ALL
   })
 }
 

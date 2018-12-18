@@ -23,7 +23,6 @@ const {
 const { getTxHash } = require('bitcoin-net/src/utils.js')
 
 const SIGNATORY_KEY_LENGTH = 33
-const SIGNATURE_LENGTH = 64
 
 const MIN_WITHDRAWAL = 2500 // in satoshis
 
@@ -88,7 +87,7 @@ module.exports = function (initialHeader, coinName) {
       // TODO: disable for mainnet
       allowMinDifficultyBlocks: true
     })
-    // TODO: pass in block timestamp to use current time in verification 
+    // TODO: pass in block timestamp to use current time in verification
     chain.add(tx.headers)
   }
 
@@ -189,9 +188,6 @@ module.exports = function (initialHeader, coinName) {
     if (!Buffer.isBuffer(signature)) {
       throw Error('Invalid signature')
     }
-    if (signature.length !== SIGNATURE_LENGTH) {
-      throw Error('Invalid signature length')
-    }
 
     // get validator's public key
     let signatorySet = getSignatorySet(context.validators)
@@ -235,9 +231,6 @@ module.exports = function (initialHeader, coinName) {
       if (!Buffer.isBuffer(signature)) {
         throw Error('Invalid signature')
       }
-      if (signature.length !== SIGNATURE_LENGTH) {
-        throw Error('Invalid signature length')
-      }
     }
 
     let signatorySet = getSignatorySet(context.validators)
@@ -257,7 +250,8 @@ module.exports = function (initialHeader, coinName) {
     // verify each signature against its corresponding sighash
     for (let i = 0; i < sigHashes.length; i++) {
       let sigHash = sigHashes[i]
-      let signature = signatures[i]
+      let signatureDER = signatures[i]
+      let signature = secp256k1.signatureImport(signatureDER)
       if (!secp256k1.verify(sigHash, signature, signatoryKey)) {
         throw Error('Invalid signature')
       }
@@ -271,6 +265,17 @@ module.exports = function (initialHeader, coinName) {
       // done signing, now the tx is valid and can be relayed
       state.signedTx = signingTx
       state.signingTx = null
+
+      // add change output to our UTXOs
+      let txHash = bitcoinTx.getHash()
+      let changeIndex = bitcoinTx.outs.length - 1
+      let changeOutput = bitcoinTx.outs[changeIndex]
+      state.utxos.push({
+        txid: txHash,
+        index: changeIndex,
+        amount: changeOutput.value
+      })
+      state.processedTxs[txHash.toString('base64')] = true
     }
   }
 

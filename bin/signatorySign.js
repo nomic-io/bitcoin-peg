@@ -57,8 +57,10 @@ async function main () {
   let p2ss = createWitnessScript(getSignatories(validators, signatoryKeys))
   let sigHashes = signingTx.inputs.map((input, i) =>
     bitcoinTx.hashForWitnessV0(i, p2ss, input.amount, bitcoin.Transaction.SIGHASH_ALL))
-  let signatures = sigHashes.map((hash) =>
-    secp256k1.sign(hash, signatoryPriv).signature)
+  let signatures = sigHashes.map((hash) => {
+    let signature = secp256k1.sign(hash, signatoryPriv).signature
+    return secp256k1.signatureExport(signature)
+  })
 
   let tx = {
     type: 'bitcoin',

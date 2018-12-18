@@ -3,11 +3,12 @@
 let { script, Transaction, payments, networks } = require('bitcoinjs-lib')
 
 const MAX_SIGNATORIES = 76
+const MIN_RELAY_FEE = 1000
 
 const firstSignatory = ({ pubkey, votingPower }) => `
-  OP_PUSHDATA1 ${pubkey} OP_CHECKSIG
+  ${pubkey} OP_CHECKSIG
   OP_IF
-    ${uint16(votingPower)}
+    ${uint(votingPower)}
   OP_ELSE
     OP_0
   OP_ENDIF
@@ -15,37 +16,34 @@ const firstSignatory = ({ pubkey, votingPower }) => `
 
 const nthSignatory = ({ pubkey, votingPower }) => `
   OP_SWAP
-  OP_PUSHDATA1 ${pubkey} OP_CHECKSIG
+    ${pubkey} OP_CHECKSIG
   OP_IF
-    ${uint16(votingPower)}
+    ${uint(votingPower)}
     OP_ADD
   OP_ENDIF
 `
 
 const compare = (threshold) => `
-  ${uint16(threshold)}
+  ${uint(threshold)}
   OP_GREATERTHAN
 `
 
 function signature (signature) {
-  console.log('sig', signature)
-  if (signature == null) {
-    return 'OP_0'
-  }
-
-  return `
-    OP_PUSHDATA1 ${signature}
-  `
+  return signature || 'OP_0'
 }
 
-function uint16 (n) {
+function uint (n) {
   if (!Number.isInteger(n)) {
     throw Error('Number must be an integer')
   }
-  if (n > 0xffff || n < 0) {
-    throw Error('Number must be >= 0 and < 65536')
+  if (n > 0xffffffff || n < 0) {
+    throw Error('Number must be >= 0 and < 2^32')
   }
-  return `OP_PUSHDATA1 ${n.toString(16).padStart(4, '0')}`
+  let nHex = n.toString(16)
+  if (nHex.length % 2 === 1) {
+    nHex = '0' + nHex
+  }
+  return nHex
 }
 
 function getVotingPowerThreshold (signatories) {
@@ -70,13 +68,9 @@ function createWitnessScript (signatories) {
 }
 
 function createScriptSig (signatures) {
-  let asm = `
-    OP_0
-
-    ${signatures
-        .map(signature)
-        .join('\n')}
-  `
+  let asm = signatures
+    .map(signature)
+    .join('\n')
 
   return script.fromASM(trim(asm))
 }
@@ -134,6 +128,8 @@ function buildOutgoingTx (signingTx, validators, signatoryKeys) {
   // withdrawals pay fee
   let txLength = tx.byteLength()
   let feeAmount = txLength // 1 satoshi per byte
+  // TODO: configure min relay fee
+  feeAmount = Math.max(feeAmount, MIN_RELAY_FEE)
   // TODO: adjust fee amount
   let feeAmountPerWithdrawal = Math.ceil(feeAmount / outputs.length)
   for (let i = 0; i < outputs.length; i++) {
