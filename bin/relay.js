@@ -7,7 +7,7 @@ let Filter = require('bitcoin-filter')
 let connect = require('lotion-connect')
 let encodeTx = require('bitcoin-protocol').types.transaction.encode
 let buildMerkleProof = require('bitcoin-merkle-proof').build
-let deposit = require('../src/deposit.js')
+let { createOutput } = require('../src/reserve.js')
 
 // TODO: get this from somewhere else
 let { getTxHash } = require('bitcoin-net/src/utils.js')
@@ -46,7 +46,7 @@ async function main () {
       return obj
     }, {})
 
-    let p2ss = deposit.createOutput(validators, signatoryKeys)
+    let p2ss = createOutput(validators, signatoryKeys)
     // TODO: reset filter
     // TODO: add p2ss to filter
     // filter.add(p2ss)

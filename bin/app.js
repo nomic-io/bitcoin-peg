@@ -31,7 +31,11 @@ let checkpoint = {
 }
 
 app.use('bitcoin', bitcoin(checkpoint, 'pbtc'))
-app.use('pbtc', coins())
+app.use('pbtc', coins({
+  handlers: {
+    bitcoin: bitcoin.coinsHandler('bitcoin')
+  }
+}))
 
 app.start()
   .then((res) => console.log(res))

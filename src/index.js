@@ -5,16 +5,27 @@ const verifyMerkleProof = require('bitcoin-merkle-proof').verify
 const protocol = require('bitcoin-protocol')
 const coins = require('coins')
 const ed25519 = require('supercop.js')
+try {
+  ed25519 = require('ed25519-supercop')
+} catch (err) {}
+const secp256k1 = require('secp256k1')
 const bitcoin = require('bitcoinjs-lib')
-// TODO: try to load native ed25519 module
-const { getSignatorySet } = require('./reserve.js')
-const deposit = require('./deposit.js')
+const {
+  createWitnessScript,
+  getSignatorySet,
+  buildOutgoingTx,
+  getSignatories, // TODO: fix, this is weird
+  createOutput,
+  getVotingPowerThreshold
+} = require('./reserve.js')
 
 // TODO: get this from somewhere else
 const { getTxHash } = require('bitcoin-net/src/utils.js')
 
 const SIGNATORY_KEY_LENGTH = 33
 const SIGNATURE_LENGTH = 64
+
+const MIN_WITHDRAWAL = 2500 // in satoshis
 
 module.exports = function (initialHeader, coinName) {
   if (!initialHeader) {
@@ -24,6 +35,32 @@ module.exports = function (initialHeader, coinName) {
     throw Error('"coinName" argument is required')
   }
   // TODO: use nested routing for different tx types
+
+  function initializer (state) {
+    // bitcoin blockchain headers (so we can SPV-verify txs)
+    state.chain = [ initialHeader ]
+
+    // commitments by validators to their secp256k1 pubkeys, which we can use
+    // on the bitcoin blockchain
+    state.signatoryKeys = {}
+
+    // index of transactions we have already processed, to prevent replaying
+    // relayed txs
+    state.processedTxs = {}
+
+    // all UTXOs that the signatory set can spend (from deposit transactions
+    // and our own change outputs)
+    state.utxos = []
+
+    // queue of withdrawals to be processed in the next disbursal
+    state.withdrawals = []
+
+    // transaction being signed by the signatories
+    state.signingTx = null
+
+    // most recent tx completely signed by the signatories which can be relayed
+    state.signedTx = null
+  }
 
   function txHandler (state, tx, context) {
     if (tx.headers) {
@@ -35,27 +72,29 @@ module.exports = function (initialHeader, coinName) {
     } else if (tx.signatoryKey) {
       // signatory key tx, add validator's pubkey to signatory set
       signatoryKeyTx(state, tx, context)
+    } else if (tx.signatures) {
+      // signature tx, add signatory's sig to outgoing transaction
+      signatureTx(state, tx, context)
     } else {
       throw Error('Unknown transaction type')
     }
   }
 
-  function initializer (state) {
-    state.chain = [ initialHeader ]
-    state.signatoryKeys = {}
-    state.processedTxs = {}
-    state.utxos = []
-  }
-
+  // headers being relayed to this chain,
+  // verify and add to state
   function headersTx (state, tx, context) {
     let chain = Blockchain({
       store: state.chain,
       // TODO: disable for mainnet
       allowMinDifficultyBlocks: true
     })
+    // TODO: pass in block timestamp to use current time in verification 
     chain.add(tx.headers)
   }
 
+  // deposit transaction(s) being relayed to this chain,
+  // verify merkle proof against a block header (SPV).
+  // then mint new coins to the recipient
   function depositTx (state, tx, context) {
     // get specified block header from state
     let chain = Blockchain({ store: state.chain })
@@ -94,7 +133,7 @@ module.exports = function (initialHeader, coinName) {
       }
       // verify first output pays to signatory set
       // TODO: compare against older validator sets
-      let expectedP2ss = deposit.createOutput(context.validators, state.signatoryKeys)
+      let expectedP2ss = createOutput(context.validators, state.signatoryKeys)
       let depositOutput = bitcoinTx.outs[0]
       if (!depositOutput.script.equals(expectedP2ss)) {
         throw Error('Invalid deposit output')
@@ -128,6 +167,9 @@ module.exports = function (initialHeader, coinName) {
     }
   }
 
+  // signatory key commitment, signed by a validator who is in the signatory
+  // set. we have to do this because tendermint validators use ed25519 keys,
+  // while for bitcoin we need secp256k1 keys.
   function signatoryKeyTx (state, tx, context) {
     let {
       signatoryIndex,
@@ -148,15 +190,16 @@ module.exports = function (initialHeader, coinName) {
       throw Error('Invalid signature')
     }
     if (signature.length !== SIGNATURE_LENGTH) {
-      throw Error('Invalid signatory key length')
+      throw Error('Invalid signature length')
     }
 
     // get validator's public key
     let signatorySet = getSignatorySet(context.validators)
-    let validatorKeyBase64 = signatorySet[signatoryIndex].validatorKey
-    if (validatorKeyBase64 == null) {
+    let signatory = signatorySet[signatoryIndex]
+    if (signatory == null) {
       throw Error('Invalid signatory index')
     }
+    let validatorKeyBase64 = signatory.validatorKey
     let validatorKey = Buffer.from(validatorKeyBase64, 'base64')
 
     if (!ed25519.verify(signature, signatoryKey, validatorKey)) {
@@ -167,10 +210,113 @@ module.exports = function (initialHeader, coinName) {
     state.signatoryKeys[validatorKeyBase64] = signatoryKey
   }
 
-  return [
+  // signature tx, add signatory's sig to outgoing transaction
+  function signatureTx (state, tx, context) {
+    let { signatoryIndex, signatures } = tx
+    let { signingTx, signatoryKeys } = state
+
+    if (signingTx == null) {
+      throw Error('No pending outgoing transaction')
+    }
+    if (signingTx.signatures[signatoryIndex] != null) {
+      throw Error('Signatures for this signatory already exist')
+    }
+
+    if (!Number.isInteger(signatoryIndex)) {
+      throw Error('Invalid signatory index')
+    }
+    if (!Array.isArray(signatures)) {
+      throw Error('"signatures" should be an array')
+    }
+    if (signatures.length !== signingTx.inputs.length) {
+      throw Error('Incorrect signature count')
+    }
+    for (let signature of signatures) {
+      if (!Buffer.isBuffer(signature)) {
+        throw Error('Invalid signature')
+      }
+      if (signature.length !== SIGNATURE_LENGTH) {
+        throw Error('Invalid signature length')
+      }
+    }
+
+    let signatorySet = getSignatorySet(context.validators)
+    let signatory = signatorySet[signatoryIndex]
+    if (signatory == null) {
+      throw Error('Invalid signatory index')
+    }
+    let signatoryKey = signatoryKeys[signatory.validatorKey]
+
+    // compute hashes that should have been signed
+    let bitcoinTx = buildOutgoingTx(signingTx, context.validators, signatoryKeys)
+    // TODO: handle dynamic signatory sets
+    let p2ss = createWitnessScript(getSignatories(context.validators, signatoryKeys))
+    let sigHashes = signingTx.inputs.map((input, i) =>
+      bitcoinTx.hashForWitnessV0(i, p2ss, input.amount, bitcoin.Transaction.SIGHASH_ALL))
+
+    // verify each signature against its corresponding sighash
+    for (let i = 0; i < sigHashes.length; i++) {
+      let sigHash = sigHashes[i]
+      let signature = signatures[i]
+      if (!secp256k1.verify(sigHash, signature, signatoryKey)) {
+        throw Error('Invalid signature')
+      }
+    }
+
+    // sigs are valid, update signing state
+    signingTx.signatures[signatoryIndex] = signatures
+    signingTx.signedVotingPower += signatory.votingPower
+    let votingPowerThreshold = getVotingPowerThreshold(signatorySet)
+    if (signingTx.signedVotingPower >= votingPowerThreshold) {
+      // done signing, now the tx is valid and can be relayed
+      state.signedTx = signingTx
+      state.signingTx = null
+    }
+  }
+
+  // runs at the end of each block
+  function blockHandler (state, context) {
+    // TODO: in the future we won't disburse every time there is a withdrawal,
+    //       we will wait until we're ready to make a checkpoint (e.g. a few
+    //       times a day or when the signatory set has changed)
+    if (state.withdrawals.length === 0) return
+    if (state.signingTx != null) return
+
+    let inputs = state.utxos
+    state.utxos = []
+
+    let outputs = state.withdrawals
+    state.withdrawals = []
+
+    state.signingTx = {
+      inputs,
+      outputs,
+      signatures: [],
+      signedVotingPower: 0
+    }
+  }
+
+  let module = [
     { type: 'initializer', middleware: initializer },
     { type: 'tx', middleware: txHandler },
+    { type: 'block', middleware: blockHandler }
   ]
+  module.methods = {
+    addWithdrawal (state, amount, script) {
+      if (!Number.isSafeInteger(amount)) {
+        throw Error('Amount must be an integer')
+      }
+      if (amount < MIN_WITHDRAWAL) {
+        throw Error(`Amount must be >= ${MIN_WITHDRAWAL}`)
+      }
+      if (!Buffer.isBuffer(script)) {
+        throw Error('Invalid output script')
+      }
+      state.withdrawals.push({ amount, script })
+    }
+  }
+  return module
+  // TODO: use this object module format
   // return {
   //   initializer,
   //   txHandler,
@@ -183,4 +329,16 @@ module.exports = function (initialHeader, coinName) {
   //     }
   //   })
   // }
+}
+
+module.exports.coinsHandler = (routeName = required('routeName')) => ({
+  // handle withdrawals
+  onOutput ({ amount, script }, state, context) {
+    let btc = context.modules[routeName]
+    btc.addWithdrawal(amount, script)
+  }
+})
+
+function required (name) {
+  throw Error(`Argument "${name}" is required`)
 }

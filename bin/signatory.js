@@ -18,10 +18,11 @@ async function main () {
   let client = await connect(gci)
   console.log('connected to peg zone network')
 
-  let privKey
-  do {
-    privKey = randomBytes(32)
-  } while (!secp.privateKeyVerify(privKey))
+  // let privKey
+  // do {
+  //   privKey = randomBytes(32)
+  // } while (!secp.privateKeyVerify(privKey))
+  let privKey = Buffer.from('LBPpa6mU5J4JK/A2LP5hrrXDxOJv3d+gCOROwQyWjNo=', 'base64')
   console.log('generated signatory privkey:', privKey.toString('base64'))
 
   // pubkey
