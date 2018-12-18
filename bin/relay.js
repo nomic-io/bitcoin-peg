@@ -7,7 +7,8 @@ let Filter = require('bitcoin-filter')
 let connect = require('lotion-connect')
 let encodeTx = require('bitcoin-protocol').types.transaction.encode
 let buildMerkleProof = require('bitcoin-merkle-proof').build
-let { createOutput } = require('../src/reserve.js')
+let { createOutput, createWitnessScript, createScriptSig, getSignatories, buildOutgoingTx } = require('../src/reserve.js')
+let bitcoin = require('bitcoinjs-lib')
 
 // TODO: get this from somewhere else
 let { getTxHash } = require('bitcoin-net/src/utils.js')
@@ -25,6 +26,12 @@ async function main () {
   let pegClient = await connect(gci)
   console.log('connected to peg zone network')
 
+  let validators = pegClient.validators.reduce((obj, v) => {
+    obj[v.pub_key.value] = v.voting_power
+    return obj
+  }, {})
+  let signatoryKeys = await pegClient.state.bitcoin.signatoryKeys
+
   async function getTip () {
     let length = await pegClient.state.bitcoin.chain.length
     return pegClient.state.bitcoin.chain[length - 1]
@@ -40,11 +47,7 @@ async function main () {
   async function scanForDeposits () {
     console.log('scanForDeposits', scanHeight)
 
-    let { processedTxs, signatoryKeys } = await pegClient.state.bitcoin
-    let validators = pegClient.validators.reduce((obj, v) => {
-      obj[v.pub_key.value] = v.voting_power
-      return obj
-    }, {})
+    let { processedTxs } = await pegClient.state.bitcoin
 
     let p2ss = createOutput(validators, signatoryKeys)
     // TODO: reset filter
@@ -144,6 +147,30 @@ async function main () {
     console.log('syncing bitcoin blockchain')
     download(chain, peers).then(() => {
       console.log('done syncing bitcoin blockchain')
+
+      pegClient.state.bitcoin.signedTx.then((signedTx) => {
+        if (signedTx == null) return
+
+        console.log('Relaying tx that was signed by the signatory set')
+        // TODO: put this somewhere else
+        let tx = buildOutgoingTx(signedTx, validators, signatoryKeys)
+        let redeemScript = createWitnessScript(getSignatories(validators, signatoryKeys))
+        for (let i = 0; i < tx.ins.length; i++) {
+          let signatures = getSignatures(signedTx.signatures, i)
+          let scriptSig = createScriptSig(signatures)
+          let p2wsh = bitcoin.payments.p2wsh({
+            redeem: {
+              input: scriptSig,
+              output: redeemScript
+            }
+          })
+          tx.setWitness(i, p2wsh.witness)
+        }
+
+        console.log('built signed tx:', tx.toHex())
+        inventory.broadcast(tx)
+        console.log('broadcasting')
+      })
     })
   }
 
@@ -194,6 +221,13 @@ function isDepositTx (tx, p2ss) {
   // TODO: check 2nd output is correct format
   // TODO: other checks?
   return true
+}
+
+function getSignatures (signatures, index) {
+  return signatures.map((sigs) => {
+    if (sigs == null) return null
+    return sigs[index].toString('hex')
+  })
 }
 
 main().catch(function (err) { throw err })
