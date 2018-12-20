@@ -66,14 +66,13 @@ function createWitnessScript (validators, signatoryKeys) {
 
   let twoThirdsVotingPower = getVotingPowerThreshold(signatories)
 
-  let asm = `
-    ${firstSignatory(signatories[0])}
-    ${signatories
-        .slice(1)
-        .map(nthSignatory)
-        .join('\n')}
-    ${compare(twoThirdsVotingPower)}
-  `
+  let asm =
+    firstSignatory(signatories[0]) +
+    signatories
+      .slice(1)
+      .map(nthSignatory)
+      .join('\n') +
+    compare(twoThirdsVotingPower)
 
   return script.fromASM(trim(asm))
 }

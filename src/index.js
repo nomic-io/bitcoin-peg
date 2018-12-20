@@ -4,7 +4,7 @@ const Blockchain = require('blockchain-spv')
 const verifyMerkleProof = require('bitcoin-merkle-proof').verify
 const protocol = require('bitcoin-protocol')
 const coins = require('coins')
-const ed25519 = require('supercop.js')
+let ed25519 = require('supercop.js')
 try {
   ed25519 = require('ed25519-supercop')
 } catch (err) {}
