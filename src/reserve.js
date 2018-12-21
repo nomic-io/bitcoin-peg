@@ -33,6 +33,7 @@ function signature (signature) {
 }
 
 function uint (n) {
+  n = Number(n)
   if (!Number.isInteger(n)) {
     throw Error('Number must be an integer')
   }
