@@ -1,5 +1,6 @@
 'use strict'
 
+const bitcoin = require('bitcoinjs-lib')
 const { PeerGroup } = require('bitcoin-net')
 const Blockchain = require('blockchain-spv')
 const params = require('webcoin-bitcoin-testnet')
@@ -69,10 +70,7 @@ async function relayHeaders (pegClient, tries = 1) {
 // to the peg chain
 async function relayDeposits (pegClient) {
   // get info about signatory set
-  let validators = pegClient.validators.reduce((obj, v) => {
-    obj[v.pub_key.value] = v.voting_power
-    return obj
-  }, {})
+  let validators = convertValidatorsToLotion(pegClient.validators)
   let signatoryKeys = await pegClient.state.bitcoin.signatoryKeys
   let p2ss = reserve.createOutput(validators, signatoryKeys)
 
@@ -105,7 +103,6 @@ async function relayDeposits (pegClient) {
   // relay any unprocessed txs (max of 4 tries)
   for (let i = 0; i < 4; i++) {
     let processedTxs = await pegClient.state.bitcoin.processedTxs
-
 
     // get txs to be relayed
     let hashes = [] // all hashes in block (so we can generate merkle proof)
@@ -182,6 +179,28 @@ async function relayDeposit (pegClient, txid) {
   throw Error('Deposit transaction was not relayed')
 }
 
+// TODO: build the 3 separate transactions as outlined in the design document
+function buildDisbursalTransaction (signedTx, validators, signatoryKeys) {
+  // build tx
+  let tx = reserve.buildOutgoingTx(signedTx, validators, signatoryKeys)
+
+  // insert signatory set's signatures as p2wsh witness
+  let redeemScript = reserve.createWitnessScript(validators, signatoryKeys)
+  for (let i = 0; i < tx.ins.length; i++) {
+    let signatures = getSignatures(signedTx.signatures, i)
+    let scriptSig = reserve.createScriptSig(signatures)
+    let p2wsh = bitcoin.payments.p2wsh({
+      redeem: {
+        input: scriptSig,
+        output: redeemScript
+      }
+    })
+    tx.setWitness(i, p2wsh.witness)
+  }
+
+  return tx
+}
+
 function isDepositTx (tx, p2ss) {
   if (tx.outs.length !== 2) return false
   if (!tx.outs[0].script.equals(p2ss)) return false
@@ -190,9 +209,29 @@ function isDepositTx (tx, p2ss) {
   return true
 }
 
+// converts validator set from Tendermint RPC format
+// to Lotion {<pubkeyB64>: <votingPower>, ...} object
+function convertValidatorsToLotion (validators) {
+  return validators.reduce((obj, v) => {
+    obj[v.pub_key.value] = v.voting_power
+    return obj
+  }, {})
+}
+
+// gets the signatures for the given input index from the
+// peg network's signedTx state object as hex
+function getSignatures (signatures, index) {
+  return signatures.map((sigs) => {
+    if (sigs == null) return null
+    return sigs[index].toString('hex')
+      + '01' // SIGHASH_ALL
+  })
+}
+
 module.exports = {
   relayHeaders,
   relayDeposits,
   relayDeposit,
+  buildDisbursalTransaction,
   isDepositTx
 }
