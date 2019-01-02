@@ -12,7 +12,7 @@
     "bitcoin-protocol": "^4.1.0",
     "bitcoinjs-lib": "^4.0.2",
     "blockchain-download": "^2.0.2",
-    "blockchain-spv": "^3.2.2",
+    "blockchain-spv": "^3.2.3",
     "coins": "^4.0.0",
     "create-hash": "^1.2.0",
     "ed25519-supercop": "^1.2.0",
