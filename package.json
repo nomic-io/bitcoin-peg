@@ -8,7 +8,7 @@
     "bitcoin-filter": "^0.2.0",
     "bitcoin-inventory": "^1.2.1",
     "bitcoin-merkle-proof": "^0.1.0",
-    "bitcoin-net": "^5.1.1",
+    "bitcoin-net": "^5.1.2",
     "bitcoin-protocol": "^4.1.0",
     "bitcoinjs-lib": "^4.0.2",
     "blockchain-download": "^2.0.2",
