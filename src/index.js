@@ -300,39 +300,26 @@ module.exports = function (initialHeader, coinName) {
     }
   }
 
-  let module = [
-    { type: 'initializer', middleware: initializer },
-    { type: 'tx', middleware: txHandler },
-    { type: 'block', middleware: blockHandler }
-  ]
-  module.methods = {
-    addWithdrawal (state, amount, script) {
-      if (!Number.isSafeInteger(amount)) {
-        throw Error('Amount must be an integer')
+  return {
+    initializers: [ initializer ],
+    transactionHandlers: [ txHandler ],
+    blockHandlers: [ blockHandler ],
+
+    methods: {
+      addWithdrawal (state, amount, script) {
+        if (!Number.isSafeInteger(amount)) {
+          throw Error('Amount must be an integer')
+        }
+        if (amount < MIN_WITHDRAWAL) {
+          throw Error(`Amount must be >= ${MIN_WITHDRAWAL}`)
+        }
+        if (!Buffer.isBuffer(script)) {
+          throw Error('Invalid output script')
+        }
+        state.withdrawals.push({ amount, script })
       }
-      if (amount < MIN_WITHDRAWAL) {
-        throw Error(`Amount must be >= ${MIN_WITHDRAWAL}`)
-      }
-      if (!Buffer.isBuffer(script)) {
-        throw Error('Invalid output script')
-      }
-      state.withdrawals.push({ amount, script })
     }
   }
-  return module
-  // TODO: use this object module format
-  // return {
-  //   initializer,
-  //   txHandler,
-  //
-  //   // handler for 'coins'
-  //   coinHandler: () => ({
-  //     // withdraw
-  //     onOutput () {
-  //       throw Error('Withdraw not yet implemented')
-  //     }
-  //   })
-  // }
 }
 
 module.exports.coinsHandler = (routeName = required('routeName')) => ({
