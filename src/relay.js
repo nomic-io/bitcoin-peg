@@ -74,7 +74,7 @@ async function relayDeposits (pegClient) {
   let signatoryKeys = await pegClient.state.bitcoin.signatoryKeys
   let p2ss = reserve.createOutput(validators, signatoryKeys)
 
-  let bitcoinTip = await relayHeaders(pegClient, 2)
+  let bitcoinTip = await relayHeaders(pegClient, 3)
   let tipHash = getBlockHash(bitcoinTip)
 
   // connect to bitcoin peers
@@ -144,6 +144,8 @@ async function relayDeposits (pegClient) {
       proof,
       transactions: includeTxs.map((tx) => encodeTx(tx))
     })
+
+    await new Promise((resolve) => setTimeout(resolve, 1000))
   }
 
   throw Error('Failed to fetch and relay block')
