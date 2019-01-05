@@ -18,7 +18,7 @@
     "ed25519-supercop": "^1.2.0",
     "leveldown": "^3.0.0",
     "levelup": "^2.0.2",
-    "lotion": "^0.3.0",
+    "lotion": "^0.4.2",
     "memdown": "^2.0.0",
     "old": "^0.2.0",
     "secp256k1": "^3.5.2",
