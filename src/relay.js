@@ -235,5 +235,6 @@ module.exports = {
   relayDeposits,
   relayDeposit,
   buildDisbursalTransaction,
-  isDepositTx
+  isDepositTx,
+  convertValidatorsToLotion
 }
