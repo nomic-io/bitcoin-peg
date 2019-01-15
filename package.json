@@ -4,9 +4,6 @@
   "description": "Cosmos Bitcoin peg zone module for Lotion/Coins",
   "main": "index.js",
   "dependencies": {
-    "axios": "^0.18.0",
-    "bitcoin-filter": "^0.2.0",
-    "bitcoin-inventory": "^1.2.1",
     "bitcoin-merkle-proof": "^0.1.0",
     "bitcoin-net": "^5.1.2",
     "bitcoin-protocol": "^4.1.0",
@@ -14,15 +11,9 @@
     "blockchain-download": "^2.0.2",
     "blockchain-spv": "^3.2.3",
     "coins": "^4.2.1",
-    "create-hash": "^1.2.0",
     "ed25519-supercop": "^1.2.0",
-    "leveldown": "^3.0.0",
-    "levelup": "^2.0.2",
-    "lotion": "^0.4.2",
-    "memdown": "^2.0.0",
-    "old": "^0.2.0",
     "secp256k1": "^3.5.2",
-    "varstruct": "^6.1.2",
+    "supercop.js": "^2.0.1",
     "webcoin-bitcoin-testnet": "^1.1.1",
     "webcoin-params": "^1.0.7"
   },
@@ -34,7 +25,7 @@
     "standard": "^12.0.1"
   },
   "scripts": {
-    "test": "depcheck && standard && nyc ava"
+    "test": "depcheck --ignores webcoin-params --ignore-dirs bin && standard && nyc ava"
   },
   "repository": {
     "type": "git",
