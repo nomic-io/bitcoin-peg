@@ -63,7 +63,7 @@ async function relayHeaders (pegClient, tries = 1) {
   }
 
   // call again to ensure peg chain is now up-to-date, or retry if needed
-  return await relayHeaders(pegClient, tries - 1)
+  return relayHeaders(pegClient, tries - 1)
 }
 
 // fetches a bitcoin block, and relays the relevant transactions in it (plus merkle proof)
@@ -225,8 +225,8 @@ function convertValidatorsToLotion (validators) {
 function getSignatures (signatures, index) {
   return signatures.map((sigs) => {
     if (sigs == null) return null
-    return sigs[index].toString('hex')
-      + '01' // SIGHASH_ALL
+    return sigs[index].toString('hex') +
+      '01' // SIGHASH_ALL
   })
 }
 
