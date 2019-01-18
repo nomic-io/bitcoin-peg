@@ -1,16 +1,16 @@
 # Proof-of-Stake Bitcoin Sidechains
 
-**Matt Bell ([@mappum](https://twitter.com/mappum))** - [Nomic Hodlings, Inc.](https://blog.nomic.io)
+**Matt Bell ([@mappum](https://twitter.com/mappum))** • [Nomic Hodlings, Inc.](https://nomic.io)
 
-*October 4, 2018*
+v0.0.1 - *January 18, 2019*
 
 ## Abstract
 
-We present a design for a Bitcoin sidechain based on the [Tendermint](https://tendermint.com) consensus protocol, allowing the development of decentralized networks which coordinate to manage reserves of Bitcoin, allowing for custom application code and smart contracts which use Bitcoin as the native currency. We also avoid the long-range attack problem of proof-of-stake networks by periodically timestamping the sidechain on the Bitcoin blockchain, gaining the security of Bitcoin's proof-of-work in addition to the instant finality of BFT consensus protocols.
+We present a design for a Bitcoin sidechain based on the [Tendermint](https://tendermint.com) consensus protocol, enabling the development of decentralized networks which coordinate to manage reserves of Bitcoin, allowing for custom application code and smart contracts which use Bitcoin as the native currency. We also avoid the long-range attack problem of proof-of-stake networks by periodically timestamping the sidechain on the Bitcoin blockchain, gaining the security of Bitcoin's proof-of-work in addition to the instant finality of BFT consensus protocols.
 
 ## Technical Overview
 
-We assume there exists a Tendermint-based consensus network with a sufficiently secure validator set, which we call the **peg network**. The validators of this network become the signatories of the network's reserves, each with a known Bitcoin-compatible public key (e.g. on the secp256k1 curve) and an integer amount of voting power.
+We assume there exists a Tendermint-based consensus network with a sufficiently secure validator set, which we call the **peg network**. The validators of this network become the signatories of the network's reserves, each with a known Bitcoin-compatible public key (e.g. on the secp256k1 curve) and an integer amount of "voting power", representing their signatures' weight in the consensus process.
 
 ### Reserve Wallet
 
@@ -111,7 +111,7 @@ This kind of issue can be solved out-of-band from the proof-of-stake network, e.
 
 To securely sync through history to get the latest state of the proof-of-stake peg network, a client will first SPV-verify the headers of the Bitcoin blockchain, ensuring they are on the highest-work chain. After this, the client only needs to possess each checkpoint transaction and its Merkle branch proving its membership in the containing Bitcoin block. The client can securely verify that a checkpoint transaction is the successor of another by ensuring it spends the *reserve output* of the previous checkpoint transaction. By following this chain of checkpoint transactions, the client can ensure that a validator set is the correct one by comparing against the *notary output* of the most recent checkpoint transaction.
 
-While the three transaction types described could be combined into one for simplicity and space savings, we separate these for the purpose of reducing the amount of data for a light client to follow the chain of checkpoints. If all deposits and withdrawals were also contained in the checkpoints, the light client would need to download all this data just to sync through history.
+While the three transaction types described (**deposit collection**, **checkpoint**, and **disbursal**) could be combined into one for simplicity and space savings, we separate these for the purpose of reducing the amount of data for a light client to follow the chain of checkpoints. If all deposits and withdrawals were also contained in the checkpoints, the light client would need to download all this data just to sync through history.
 
 #### Process
 
@@ -138,7 +138,7 @@ While in both proof-of-work and proof-of-stake security models we assume a major
 
 ### Calculations
 
-One issue is that the Bitcoin Core standardness rules at the time of this writing limit transaction outputs to 3,600 bytes, limiting the number of validators we can fit in the script. Since we require 6 bytes for the check against the two-thirds threshold and each validator uses 47 bytes (even the first one which has a slightly different script), assuming voting power values are 16-bits, we can fit 76 validators into the script.
+One issue is that the Bitcoin Core standardness rules at the time of this writing limit transaction outputs to 3,600 bytes, limiting the number of validators we can fit in the script. Since we require 6 bytes for the check against the two-thirds threshold and each signatory uses 47 bytes (even the first one which has a slightly different script), assuming voting power values are 16-bits, we can fit 76 signatories into the script.
 
 If the validator set is larger than this limit, we can truncate the signatory set to include only the 76 validators with the most voting power. The other validators are not signatories of the reserve, but still maintain the consensus of the peg network.
 
@@ -146,15 +146,17 @@ Note that the Bitcoin consensus rules actually allow outputs of up to 10,000 byt
 
 #### Fees
 
-Since the reserve witness script in size with the number of validators, it can end up becoming large and creating a high Bitcoin transaction fee cost. However, this is somewhat low since it is contained only in the transaction witness.
+Since the reserve witness script scales in size with the number of signatories, it can end up becoming large and creating a high Bitcoin transaction fee cost. However, it is contained only in the transaction witness which reduces the impact.
 
-At the time of this writing, transactions are confirmed within a reasonable amount of time at a fee rate of 1 satoshi per byte. This means an input that spends the reserve witness script can cost as low as 3,600 satoshis, or a value of $0.24 at the time of this writing.
+At the time of this writing, transactions are confirmed within a reasonable amount of time (on the order of 1 or 2 hours) at a fee rate of 1 satoshi per byte. This means an input that spends the reserve witness script can cost as low as 3,600 satoshis, or a value of $0.13 at the time of this writing.
 
-Only three of these fees are paid by the network per checkpoint, meaning the cost per checkpoint at the time of this writing is about $0.76 (adding in the roughly 200-byte overhead of the non-witness parts of the transactions, which are negligible compared to the reserve witness inputs), a cost sufficiently low to be subsidized by the peg network.
+Only three of these fees are paid by the network per checkpoint, meaning the cost per checkpoint at the time of this writing is about $0.39 (adding in the roughly 200-byte overhead of the non-witness parts of the transactions, which are negligible compared to the reserve witness inputs), a cost sufficiently low to be subsidized by the peg network.
 
-One of these reserve witness fees are also paid per deposit, but this cost can be paid by the depositor rather than subsidizing (by subtracting from the amount of peg tokens credited to the depositor's address in the peg network ledger).
+One of these reserve witness fees are also paid per deposit, but this cost can be paid by the depositor rather than subsidizing (by subtracting from the amount of peg tokens credited to the depositor's address in the peg network ledger). Deposits that are not large enough to pay their own fee can be ignored (and possibly collected in the future if the fee is reduced).
 
-The batching of the disbursal transaction means that all withdrawals share the cost of a single reserve witness fee, making the cost negligible.
+The batching of the disbursal transaction means that all withdrawals share the cost of a single reserve witness fee, making the cost negligible. This cost can be shared by all the withdrawals in the disbursal transaction.
+
+If fees were drastically higher due to high congestion on the Bitcoin network, the costs of depositing and checkpointing would be significantly higher. Individual peg networks could make decisions such as producing checkpoints less often in order to reduce the amount of fees paid.
 
 ### Enhancements
 
@@ -164,4 +166,4 @@ In the future, when the Bitcoin network adopts changes such as a script opcode t
 
 #### Emergency Disbursal
 
-Another possible enhancement to the design described in this paper is to create an output path in the reserve witness script, which in the event of stalled consensus of the signatories can be redeemed to disburse all the reserves to their respective claim holders. This **emergency disbursal transaction** would only be valid in the rare event that the signatories are unable to reach consensus for some amount of time.
+Another possible enhancement to the design described in this paper is to create a timelocked transaction which takes as input all Bitcoin held in reserves, which in the event of stalled consensus of the signatories would be redeemed to disburse all the reserves to their respective claim holders. This **emergency disbursal transaction** would only be valid in the rare event that the signatories are unable to reach consensus for some amount of time.
