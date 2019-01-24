@@ -10,7 +10,6 @@
     "bitcoinjs-lib": "^4.0.2",
     "blockchain-download": "^2.0.2",
     "blockchain-spv": "^3.2.3",
-    "coins": "^4.2.1",
     "ed25519-supercop": "^1.2.0",
     "secp256k1": "^3.5.2",
     "supercop.js": "^2.0.1",
@@ -20,7 +19,9 @@
   "devDependencies": {
     "ava": "^1.1.0",
     "bitcoind": "^1.2.1",
+    "coins": "^4.2.1",
     "depcheck": "^0.6.11",
+    "lotion": "^0.4.5",
     "nyc": "^13.1.0",
     "standard": "^12.0.1"
   },
