@@ -3,6 +3,13 @@
 const { createHash } = require('crypto')
 const ed = require('ed25519-supercop')
 const secp = require('secp256k1')
+const bitcoin = require('bitcoinjs-lib')
+const {
+  getSignatorySet,
+  buildOutgoingTx,
+  createWitnessScript
+} = require('./reserve.js')
+const { convertValidatorsToLotion } = require('./relay.js')
 
 async function commitPubkey (client, privValidator, signatoryPub) {
   if (!secp.publicKeyVerify(signatoryPub)) {
@@ -24,17 +31,52 @@ async function commitPubkey (client, privValidator, signatoryPub) {
 
   let signature = sign(privValidator, signatoryPub)
 
-  let res = await client.send({
+  return checkResult(await client.send({
     type: 'bitcoin',
     signatoryIndex,
     signatoryKey: signatoryPub,
     signature
-  })
-  if (res.check_tx.code || res.deliver_tx.code) {
-    let log = res.check_tx.log || res.deliver_tx.log
-    throw Error(`Error sending signatory key commitment transaction: ${log}`)
+  }))
+}
+
+async function signDisbursal (client, signatoryPriv) {
+  let signatoryPub = secp.publicKeyCreate(signatoryPriv)
+  let validators = convertValidatorsToLotion(client.validators)
+  let signatoryKeys = await client.state.bitcoin.signatoryKeys
+  let signatories = getSignatorySet(validators)
+  let signatoryIndex
+  for (let i = 0; i < signatories.length; i++) {
+    let signatory = signatories[i]
+    if (signatoryKeys[signatory.validatorKey].equals(signatoryPub)) {
+      // found our signatory
+      signatoryIndex = i
+      break
+    }
   }
-  return res
+  if (signatoryIndex == null) {
+    throw Error('Given signatory key not found in signatory set')
+  }
+
+  let signingTx = await client.state.bitcoin.signingTx
+  if (signingTx == null) {
+    throw Error('No tx to be signed')
+  }
+
+  let bitcoinTx = buildOutgoingTx(signingTx, validators, signatoryKeys)
+
+  let p2ss = createWitnessScript(validators, signatoryKeys)
+  let sigHashes = signingTx.inputs.map((input, i) =>
+    bitcoinTx.hashForWitnessV0(i, p2ss, input.amount, bitcoin.Transaction.SIGHASH_ALL))
+  let signatures = sigHashes.map((hash) => {
+    let signature = secp.sign(hash, signatoryPriv).signature
+    return secp.signatureExport(signature)
+  })
+
+  return checkResult(await client.send({
+    type: 'bitcoin',
+    signatures,
+    signatoryIndex
+  }))
 }
 
 function sha512 (data) {
@@ -63,7 +105,16 @@ function convertEd25519 (ref10Priv) {
   return privConverted
 }
 
+function checkResult (res) {
+  if (res.check_tx.code || res.deliver_tx.code) {
+    let log = res.check_tx.log || res.deliver_tx.log
+    throw Error(log)
+  }
+  return res
+}
+
 module.exports = {
   commitPubkey,
+  signDisbursal,
   convertEd25519
 }
