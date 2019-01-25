@@ -33,7 +33,7 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
     debug: 1
   })
   await bitcoind.started()
-  console.log('set up bitcoind')
+  console.log('started bitcoind')
 
   await bitcoind.rpc.generate(200)
   let genesisHash = await bitcoind.rpc.getBlockHash(0)
@@ -96,6 +96,7 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
   let signatoryKeyState = await client.state.bitcoin.signatoryKeys
   t.is(Object.keys(signatoryKeyState).length, 1)
   t.true(signatoryKeyState[privValidator.pub_key.value].equals(signatoryPub), 'signatory key is in state')
+  console.log('committed signatory key')
 
   // header relay
   await peg.relay.relayHeaders(client, {
@@ -106,6 +107,7 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
     }
   })
   t.is(await client.state.bitcoin.chain.length, 201)
+  console.log('relayed bitcoin headers')
 
   // cleanup
   bitcoind.kill()
