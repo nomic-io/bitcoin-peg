@@ -21,9 +21,9 @@ params.staticPeers = [ 'localhost' ]
 params.defaultPort = 18444
 params.magic = 0xdab5bffa
 
-test('integration (bitcoind + lotion app + relayers)', async (t) => {
-  // TODO: use multiple validators
+const VALIDATOR_COUNT = 2
 
+test('integration (bitcoind + lotion app + relayers)', async (t) => {
   let dataPath = join(tmpdir(), Math.random().toString(36))
   let bitcoinPath = join(dataPath, 'bitcoin')
   mkdirSync(dataPath)
@@ -54,29 +54,41 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
   }
   console.log('generated bitcoin blocks')
 
-  let privValidatorJson = tendermint.genValidator()
-  let privValidator = JSON.parse(privValidatorJson)
-  let privValidatorPath = join(dataPath, 'priv_validator.json')
-  let genesisPath = join(dataPath, 'genesis.json')
-  writeFileSync(privValidatorPath, privValidatorJson)
-  writeFileSync(genesisPath, createGenesis(privValidator))
-  console.log('created genesis and priv_validator')
+  let validators = []
+  for (let i = 0; i < VALIDATOR_COUNT; i++) {
+    let privValidatorJson = tendermint.genValidator()
+    let privValidator = JSON.parse(privValidatorJson)
+    let privValidatorPath = join(dataPath, `priv_validator${i}.json`)
+    writeFileSync(privValidatorPath, privValidatorJson)
+    validators.push({ privValidator, privValidatorPath })
+  }
 
-  let app = lotion({
-    initialState: {},
-    keyPath: privValidatorPath,
-    genesisPath: genesisPath
-  })
-  app.use('bitcoin', peg(genesisBlock, 'pbtc', {
-    noRetargeting: true
-  }))
-  app.use('pbtc', coins({
-    handlers: {
-      bitcoin: peg.coinsHandler('bitcoin')
-    }
-  }))
-  let appInfo = await app.start()
-  console.log('started lotion app')
+  let genesisPath = join(dataPath, 'genesis.json')
+  writeFileSync(genesisPath, createGenesis(validators))
+
+  let startPromises = []
+  for (let i = 0; i < validators.length; i++) {
+    let v = validators[i]
+    let app = lotion({
+      initialState: {},
+      keyPath: v.privValidatorPath,
+      genesisPath,
+      p2pPort: 10800 + i,
+      rpcPort: 10900 + i,
+      peers: [ 'localhost:10800' ]
+    })
+    app.use('bitcoin', peg(genesisBlock, 'pbtc', {
+      noRetargeting: true
+    }))
+    app.use('pbtc', coins({
+      handlers: {
+        bitcoin: peg.coinsHandler('bitcoin')
+      }
+    }))
+    startPromises.push(app.start())
+  }
+  let appInfo = (await Promise.all(startPromises))[0]
+  console.log('started peg network nodes')
 
   await new Promise((resolve) => setTimeout(resolve, 1000))
   let client = await lotion.connect(appInfo.GCI)
@@ -95,13 +107,16 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
 
   // signatory key commitment
   t.deepEqual(await client.state.bitcoin.signatoryKeys, {})
-  let signatoryPriv = randomBytes(32)
-  let signatoryPub = secp.publicKeyCreate(signatoryPriv)
-  await peg.signatory.commitPubkey(client, privValidator, signatoryPub)
+  for (let v of validators) {
+    v.signatoryPriv = randomBytes(32)
+    let signatoryPub = secp.publicKeyCreate(v.signatoryPriv)
+    await peg.signatory.commitPubkey(client, v.privValidator, signatoryPub)
+    let signatoryKeyState = await client.state.bitcoin.signatoryKeys
+    t.true(signatoryKeyState[v.privValidator.pub_key.value].equals(signatoryPub), 'signatory key is in state')
+  }
   let signatoryKeyState = await client.state.bitcoin.signatoryKeys
-  t.is(Object.keys(signatoryKeyState).length, 1)
-  t.true(signatoryKeyState[privValidator.pub_key.value].equals(signatoryPub), 'signatory key is in state')
-  console.log('committed signatory key')
+  t.is(Object.keys(signatoryKeyState).length, VALIDATOR_COUNT)
+  console.log('committed signatory keys')
 
   // header relay
   await peg.relay.relayHeaders(client, {
@@ -180,7 +195,10 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
   })
   console.log('sent withdrawal transaction')
 
-  await peg.signatory.signDisbursal(client, signatoryPriv)
+  for (let i = 0; i < Math.ceil((2 / 3) * VALIDATOR_COUNT); i++) {
+    let v = validators[i]
+    await peg.signatory.signDisbursal(client, v.signatoryPriv)
+  }
   let signedTx = await client.state.bitcoin.signedTx
   let disbursalTx = peg.relay.buildDisbursalTransaction(
     signedTx,
@@ -188,8 +206,8 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
     signatoryKeyState
   )
   t.is(await client.state.bitcoin.signingTx, null)
-  t.is(signedTx.signatures.length, 1)
-  t.is(signedTx.signedVotingPower, 10)
+  t.is(signedTx.signatures.length, 2)
+  t.is(signedTx.signedVotingPower, 20)
   deepEqual(t, await client.state.bitcoin.utxos, [{
     amount: 9899990000,
     index: 1,
@@ -205,7 +223,7 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
   bitcoind.kill()
 })
 
-function createGenesis (privValidator) {
+function createGenesis (validators) {
   return `
     {
       "genesis_time": "2019-01-03T18:15:05.000Z",
@@ -220,15 +238,17 @@ function createGenesis (privValidator) {
         }
       },
       "validators": [
-        {
-          "address": "${privValidator.address}",
-          "pub_key": {
-            "type": "tendermint/PubKeyEd25519",
-            "value": "${privValidator.pub_key.value}"
-          },
-          "power": "10",
-          "name": ""
-        }
+        ${validators.map((v) => `
+          {
+            "address": "${v.privValidator.address}",
+            "pub_key": {
+              "type": "tendermint/PubKeyEd25519",
+              "value": "${v.privValidator.pub_key.value}"
+            },
+            "power": "10",
+            "name": ""
+          }
+        `).join(',\n')}
       ],
       "app_hash": ""
     }
