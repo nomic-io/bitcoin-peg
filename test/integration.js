@@ -6,6 +6,7 @@ const { join } = require('path')
 const { tmpdir } = require('os')
 const test = require('ava')
 const secp = require('secp256k1')
+const base58 = require('bs58check')
 const createBitcoind = require('bitcoind')
 const lotion = require('lotion')
 const tendermint = require('tendermint-node')
@@ -30,7 +31,8 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
   let bitcoind = createBitcoind({
     regtest: true,
     datadir: bitcoinPath,
-    debug: 1
+    debug: 1,
+    deprecatedrpc: 'signrawtransaction'
   })
   await bitcoind.started()
   console.log('started bitcoind')
@@ -108,6 +110,49 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
   })
   t.is(await client.state.bitcoin.chain.length, 201)
   console.log('relayed bitcoin headers')
+
+  // create coins wallet
+  let privKey = randomBytes(32)
+  let wallet = coins.wallet(privKey, client, { route: 'pbtc' })
+  let addressHash = base58.decode(wallet.address())
+
+  // sned deposit on bitcoin blockchain
+  let utxos = (await bitcoind.rpc.listUnspent())
+    .map((utxo) => ({
+      vout: utxo.vout,
+      txid: Buffer.from(utxo.txid, 'hex').reverse(),
+      value: utxo.amount * 1e8
+    }))
+    .slice(0, 2)
+  let depositTx = peg.deposit.createTx(
+    peg.relay.convertValidatorsToLotion(client.validators),
+    signatoryKeyState,
+    utxos,
+    addressHash
+  )
+  let signedDepositTx = await bitcoind.rpc.signRawTransaction(depositTx.toHex())
+  let depositTxidHex = await bitcoind.rpc.sendRawTransaction(signedDepositTx.hex)
+  let depositTxid = Buffer.from(depositTxidHex, 'hex')
+  await bitcoind.rpc.generate(1)
+  console.log('sent deposit transaction')
+
+  // relay deposit
+  await peg.relay.relayDeposits(client)
+  deepEqual(t, await client.state.bitcoin.processedTxs, {
+    [depositTxid.toString('base64')]: true
+  })
+  deepEqual(t, await client.state.bitcoin.utxos, [{
+    amount: 9999990000,
+    index: 0,
+    txid: depositTxid
+  }])
+  deepEqual(t, await client.state.pbtc.accounts, {
+    [wallet.address()]: {
+      balance: 9999990000,
+      sequence: 0
+    }
+  })
+  console.log('relayed deposit')
 
   // cleanup
   bitcoind.kill()
