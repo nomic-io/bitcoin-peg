@@ -19,6 +19,7 @@
   "devDependencies": {
     "ava": "^1.1.0",
     "bitcoind": "^1.2.1",
+    "bs58check": "^2.1.2",
     "coins": "^4.2.1",
     "depcheck": "^0.6.11",
     "lotion": "^0.4.5",
