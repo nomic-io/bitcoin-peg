@@ -12,6 +12,14 @@ const tendermint = require('tendermint-node')
 const coins = require('coins')
 const peg = require('..')
 
+// TODO: don't monkey patch, let us pass in regtest params to webcoin
+const params = require('webcoin-bitcoin-testnet').net
+params.dnsSeeds = []
+params.webSeeds = []
+params.staticPeers = [ 'localhost' ]
+params.defaultPort = 18444
+params.magic = 0xdab5bffa
+
 test('integration (bitcoind + lotion app + relayers)', async (t) => {
   let dataPath = join(tmpdir(), Math.random().toString(36))
   let bitcoinPath = join(dataPath, 'bitcoin')
@@ -21,17 +29,24 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
 
   let bitcoind = createBitcoind({
     regtest: true,
-    datadir: bitcoinPath
+    datadir: bitcoinPath,
+    debug: 1
   })
   await bitcoind.started()
   console.log('set up bitcoind')
 
   await bitcoind.rpc.generate(200)
   let genesisHash = await bitcoind.rpc.getBlockHash(0)
-  let genesisBlock = await bitcoind.rpc.getBlock(genesisHash)
-  genesisBlock.merkleRoot = Buffer.from(genesisBlock.merkleroot, 'hex')
-  genesisBlock.timestamp = genesisBlock.time
-  genesisBlock.prevHash = Buffer.alloc(32)
+  let genesisBlockRpc = await bitcoind.rpc.getBlock(genesisHash)
+  let genesisBlock = {
+    height: 0,
+    bits: parseInt(genesisBlockRpc.bits, 16),
+    nonce: genesisBlockRpc.nonce,
+    version: genesisBlockRpc.version,
+    merkleRoot: Buffer.from(genesisBlockRpc.merkleroot, 'hex').reverse(),
+    timestamp: genesisBlockRpc.time,
+    prevHash: Buffer.alloc(32)
+  }
   console.log('generated bitcoin blocks')
 
   let privValidatorJson = tendermint.genValidator()
@@ -47,7 +62,9 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
     keyPath: privValidatorPath,
     genesisPath: genesisPath
   })
-  app.use('bitcoin', peg(genesisBlock, 'pbtc'))
+  app.use('bitcoin', peg(genesisBlock, 'pbtc', {
+    noRetargeting: true
+  }))
   app.use('pbtc', coins({
     handlers: {
       bitcoin: peg.coinsHandler('bitcoin')
@@ -60,6 +77,17 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
   let client = await lotion.connect(appInfo.GCI)
   console.log('connected lotion client')
 
+  // check initial peg state
+  deepEqual(t, await client.state.bitcoin, {
+    chain: [ genesisBlock ],
+    processedTxs: {},
+    signatoryKeys: {},
+    signedTx: null,
+    signingTx: null,
+    utxos: [],
+    withdrawals: []
+  })
+
   // signatory key commitment
   t.deepEqual(await client.state.bitcoin.signatoryKeys, {})
   let signatoryPriv = randomBytes(32)
@@ -70,6 +98,14 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
   t.true(signatoryKeyState[privValidator.pub_key.value].equals(signatoryPub), 'signatory key is in state')
 
   // header relay
+  await peg.relay.relayHeaders(client, {
+    netOpts: { numPeers: 1 },
+    chainOpts: {
+      maxTarget: Buffer.from('7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 'hex'),
+      noRetargeting: true
+    }
+  })
+  t.is(await client.state.bitcoin.chain.length, 201)
 
   // cleanup
   bitcoind.kill()
@@ -103,4 +139,25 @@ function createGenesis (privValidator) {
       "app_hash": ""
     }
   `
+}
+
+// deep equal that supports Buffers
+function deepEqual (t, a, b) {
+  function clone (src) {
+    let dest = {}
+    for (let [ key, value ] in Object.entries(src)) {
+      if (Buffer.isBuffer(value)) {
+        dest[key] = ':Buffer:' + value.toString('hex')
+      } else if (typeof value === 'object' && value != null) {
+        dest[key] = clone(value)
+      } else {
+        dest[key] = value
+      }
+    }
+    return dest
+  }
+
+  let a2 = clone(a)
+  let b2 = clone(b)
+  return t.deepEqual(a2, b2)
 }

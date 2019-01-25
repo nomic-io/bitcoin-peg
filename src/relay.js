@@ -54,10 +54,10 @@ async function relayHeaders (pegClient, opts = {}) {
   for (let i = 0; i < toRelay.length; i += HEADER_BATCH_SIZE) {
     let batch = toRelay.slice(i, i + HEADER_BATCH_SIZE)
     // TODO: emit errors that don't have to do with duplicate headers
-    console.log(await pegClient.send({
+    await pegClient.send({
       type: 'bitcoin',
       headers: batch
-    }))
+    })
   }
 
   // call again to ensure peg chain is now up-to-date, or retry if needed
