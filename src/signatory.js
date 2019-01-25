@@ -17,10 +17,12 @@ async function commitPubkey (client, privValidator, signatoryPub) {
   }
 
   // locate our validator key in validators array
+  let validators = convertValidatorsToLotion(client.validators)
+  let signatorySet = getSignatorySet(validators)
   let signatoryIndex
-  for (let i = 0; i < client.validators.length; i++) {
-    let validator = client.validators[i]
-    if (validator.pub_key.value === privValidator.pub_key.value) {
+  for (let i = 0; i < signatorySet.length; i++) {
+    let signatory = signatorySet[i]
+    if (signatory.validatorKey === privValidator.pub_key.value) {
       signatoryIndex = i
       break
     }
@@ -29,7 +31,7 @@ async function commitPubkey (client, privValidator, signatoryPub) {
     throw Error('Given validator key not found in validator set')
   }
 
-  let signature = sign(privValidator, signatoryPub)
+  let signature = ed25519Sign(privValidator, signatoryPub)
 
   return checkResult(await client.send({
     type: 'bitcoin',
@@ -43,10 +45,10 @@ async function signDisbursal (client, signatoryPriv) {
   let signatoryPub = secp.publicKeyCreate(signatoryPriv)
   let validators = convertValidatorsToLotion(client.validators)
   let signatoryKeys = await client.state.bitcoin.signatoryKeys
-  let signatories = getSignatorySet(validators)
+  let signatorySet = getSignatorySet(validators)
   let signatoryIndex
-  for (let i = 0; i < signatories.length; i++) {
-    let signatory = signatories[i]
+  for (let i = 0; i < signatorySet.length; i++) {
+    let signatory = signatorySet[i]
     if (signatoryKeys[signatory.validatorKey].equals(signatoryPub)) {
       // found our signatory
       signatoryIndex = i
@@ -83,7 +85,7 @@ function sha512 (data) {
   return createHash('sha512').update(data).digest()
 }
 
-function sign (privValidator, message) {
+function ed25519Sign (privValidator, message) {
   if (privValidator.priv_key.type !== 'tendermint/PrivKeyEd25519') {
     throw Error('Expected privkey type "tendermint/PrivKeyEd25519"')
   }
