@@ -25,7 +25,7 @@ const SIGNATORY_KEY_LENGTH = 33
 
 const MIN_WITHDRAWAL = 2500 // in satoshis
 
-module.exports = function (initialHeader, coinName) {
+module.exports = function (initialHeader, coinName, chainOpts = {}) {
   if (!initialHeader) {
     throw Error('"initialHeader" argument is required')
   }
@@ -83,8 +83,9 @@ module.exports = function (initialHeader, coinName) {
   function headersTx (state, tx, context) {
     let chain = Blockchain({
       store: state.chain,
-      // TODO: disable for mainnet
-      allowMinDifficultyBlocks: true
+      // TODO: config
+      allowMinDifficultyBlocks: true,
+      ...chainOpts
     })
     // TODO: pass in block timestamp to use current time in verification
     chain.add(tx.headers)
@@ -95,6 +96,7 @@ module.exports = function (initialHeader, coinName) {
   // then mint new coins to the recipient
   function depositTx (state, tx, context) {
     // get specified block header from state
+    // TODO: make this into a static blockchain-spv function
     let chain = Blockchain({ store: state.chain })
     let header = chain.getByHeight(tx.height)
 
