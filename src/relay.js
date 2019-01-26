@@ -15,28 +15,24 @@ const { getTxHash, getBlockHash } = require('bitcoin-net/src/utils.js')
 const HEADER_BATCH_SIZE = 250
 
 // fetches bitcoin headers and relays any unprocessed ones to the peg chain
-async function relayHeaders (pegClient, tries = 1) {
+async function relayHeaders (pegClient, opts = {}) {
+  let tries = opts.tries != null ? opts.tries : 1
+  let netOpts = opts.netOpts
+  let chainOpts = opts.chainOpts
+
   let chainState = await pegClient.state.bitcoin.chain
   let chain = Blockchain({
     store: chainState,
     indexed: true,
     // TODO: disable for mainnet
-    allowMinDifficultyBlocks: true
+    allowMinDifficultyBlocks: true,
+    ...chainOpts
   })
 
   // connect to bitcoin peers
-  let peers = PeerGroup(params.net) // TODO: configure
+  let peers = PeerGroup(params.net, netOpts) // TODO: configure
   peers.connect()
-
-  // wait to connect to a few peers
-  await new Promise((resolve) => {
-    function waitForPeers () {
-      if (peers.peers.length < 4) return
-      peers.removeListener('peer', waitForPeers)
-      resolve()
-    }
-    peers.on('peer', waitForPeers)
-  })
+  await waitForPeers(peers)
 
   // catch up chain
   await download(chain, peers)
@@ -44,6 +40,7 @@ async function relayHeaders (pegClient, tries = 1) {
 
   let chainState2 = await pegClient.state.bitcoin.chain
   let tip = chainState2[chainState2.length - 1]
+
   if (chain.height() <= tip.height) {
     // peg chain is up to date
     return tip
@@ -56,6 +53,7 @@ async function relayHeaders (pegClient, tries = 1) {
   let toRelay = chain.store.slice(tip.height - chain.height())
   for (let i = 0; i < toRelay.length; i += HEADER_BATCH_SIZE) {
     let batch = toRelay.slice(i, i + HEADER_BATCH_SIZE)
+    // TODO: emit errors that don't have to do with duplicate headers
     await pegClient.send({
       type: 'bitcoin',
       headers: batch
@@ -63,32 +61,24 @@ async function relayHeaders (pegClient, tries = 1) {
   }
 
   // call again to ensure peg chain is now up-to-date, or retry if needed
-  return await relayHeaders(pegClient, tries - 1)
+  return relayHeaders(pegClient, Object.assign({}, opts, { tries: tries - 1 }))
 }
 
 // fetches a bitcoin block, and relays the relevant transactions in it (plus merkle proof)
 // to the peg chain
-async function relayDeposits (pegClient) {
+async function relayDeposits (pegClient, opts = {}) {
   // get info about signatory set
   let validators = convertValidatorsToLotion(pegClient.validators)
   let signatoryKeys = await pegClient.state.bitcoin.signatoryKeys
   let p2ss = reserve.createOutput(validators, signatoryKeys)
 
-  let bitcoinTip = await relayHeaders(pegClient, 3)
+  let bitcoinTip = await relayHeaders(pegClient, Object.assign({}, opts, { tries: 3 }))
   let tipHash = getBlockHash(bitcoinTip)
 
   // connect to bitcoin peers
   let peers = PeerGroup(params.net) // TODO: configure
   peers.connect()
-  // wait to connect to a few peers
-  await new Promise((resolve) => {
-    function waitForPeers () {
-      if (peers.peers.length < 4) return
-      peers.removeListener('peer', waitForPeers)
-      resolve()
-    }
-    peers.on('peer', waitForPeers)
-  })
+  await waitForPeers(peers)
 
   // fetch block
   // TODO: fetch back a few blocks?
@@ -225,8 +215,22 @@ function convertValidatorsToLotion (validators) {
 function getSignatures (signatures, index) {
   return signatures.map((sigs) => {
     if (sigs == null) return null
-    return sigs[index].toString('hex')
-      + '01' // SIGHASH_ALL
+    return sigs[index].toString('hex') +
+      '01' // SIGHASH_ALL
+  })
+}
+
+function waitForPeers (peers) {
+  return new Promise((resolve) => {
+    function onPeer (peer) {
+      let isLocalhost = peer.socket.remoteAddress === '127.0.0.1'
+      if (!isLocalhost && peers.peers.length < 4) {
+        return
+      }
+      peers.removeListener('peer', onPeer)
+      resolve()
+    }
+    peers.on('peer', onPeer)
   })
 }
 

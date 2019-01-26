@@ -81,6 +81,7 @@ function createWitnessScript (validators, signatoryKeys) {
 function createScriptSig (signatures) {
   let asm = signatures
     .map(signature)
+    .reverse()
     .join('\n')
 
   return script.fromASM(trim(asm))
