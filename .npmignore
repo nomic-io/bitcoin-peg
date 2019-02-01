@@ -1,3 +1,5 @@
 .travis.yml
 test
 bitcoinPeg.md
+.nyc_output
+LICENSE
