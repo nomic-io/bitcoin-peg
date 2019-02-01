@@ -29,7 +29,7 @@
     "tendermint-node": "^3.5.0"
   },
   "scripts": {
-    "test": "depcheck --ignores webcoin-params,tendermint-node --ignore-dirs bin && standard src/* index.js && nyc ava -v"
+    "test": "depcheck --ignores webcoin-params,tendermint-node,deterministic-json --ignore-dirs bin && standard src/* bin/* index.js && nyc ava -v"
   },
   "repository": {
     "type": "git",

@@ -3,14 +3,13 @@
 'use strict'
 
 let { readFileSync, writeFileSync } = require('fs')
-let { randomBytes, createHash } = require('crypto')
+let { randomBytes } = require('crypto')
 let { join, dirname } = require('path')
 let secp = require('secp256k1')
-let ed = require('ed25519-supercop')
 let { connect } = require('lotion')
 let {
   commitPubkey,
-  signDisbursal,
+  signDisbursal
 } = require('../src/signatory.js')
 let DJSON = require('deterministic-json')
 
