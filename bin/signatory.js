@@ -46,13 +46,12 @@ async function main () {
   // ensure we haven't committed to a key yet
   let signatoryPub = secp.publicKeyCreate(signatoryKey.priv)
   let committedPub = await client.state.bitcoin.signatoryKeys[privValidator.pub_key.value]
-  if (committedPub != null) {
-    if (!committedPub.equals(signatoryPub) && !process.argv.includes('-f')) {
-      console.log('already committed to a different signatory key. i hope you didn\'t lose the private key you committed to...')
-      process.exit(1)
-    }
-  } else {
-    // commit to a signatory key
+  if (committedPub != null && !committedPub.equals(signatoryPub) && !process.argv.includes('-f')) {
+    console.log('already committed to a different signatory key. i hope you didn\'t lose the private key you committed to...')
+    process.exit(1)
+  }
+  // commit to a signatory key
+  if (committedPub == null || !committedPub.equals(signatoryPub)) {
     await commitPubkey(client, privValidator, signatoryPub)
     console.log('committed to signatory key on chain')
   }
