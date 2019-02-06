@@ -70,7 +70,10 @@ async function main () {
   }
 }
 
-main().catch(function (err) { throw err })
+main().catch((err) => {
+  console.error(err.stack)
+  process.exit(1)
+})
 
 function delay (ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
