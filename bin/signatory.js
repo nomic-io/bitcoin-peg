@@ -47,7 +47,7 @@ async function main () {
   let signatoryPub = secp.publicKeyCreate(signatoryKey.priv)
   let committedPub = await client.state.bitcoin.signatoryKeys[privValidator.pub_key.value]
   if (committedPub != null) {
-    if (!committedPub.equals(signatoryPub)) {
+    if (!committedPub.equals(signatoryPub) && !process.argv.includes('-f')) {
       console.log('already committed to a different signatory key. i hope you didn\'t lose the private key you committed to...')
       process.exit(1)
     }
