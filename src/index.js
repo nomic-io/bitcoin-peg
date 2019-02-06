@@ -58,6 +58,7 @@ module.exports = function (initialHeader, coinName, chainOpts = {}) {
 
     // most recent tx completely signed by the signatories which can be relayed
     state.signedTx = null
+    state.prevSignedTx = null
   }
 
   function txHandler (state, tx, context) {
@@ -264,6 +265,7 @@ module.exports = function (initialHeader, coinName, chainOpts = {}) {
     let votingPowerThreshold = getVotingPowerThreshold(signatorySet)
     if (signingTx.signedVotingPower >= votingPowerThreshold) {
       // done signing, now the tx is valid and can be relayed
+      state.prevSignedTx = state.signedTx
       state.signedTx = signingTx
       state.signingTx = null
 
