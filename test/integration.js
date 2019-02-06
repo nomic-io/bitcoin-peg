@@ -100,6 +100,7 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
     processedTxs: {},
     signatoryKeys: {},
     signedTx: null,
+    prevSignedTx: null,
     signingTx: null,
     utxos: [],
     withdrawals: []
