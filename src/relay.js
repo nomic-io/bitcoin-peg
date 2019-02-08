@@ -1,5 +1,7 @@
 'use strict'
 
+const debug = require('debug')('bitcoin-peg:relay')
+const SPVNode = require('webcoin')
 const bitcoin = require('bitcoinjs-lib')
 const { PeerGroup } = require('bitcoin-net')
 const Blockchain = require('blockchain-spv')
@@ -67,29 +69,62 @@ async function relayHeaders (pegClient, opts = {}) {
 // fetches a bitcoin block, and relays the relevant transactions in it (plus merkle proof)
 // to the peg chain
 async function relayDeposits (pegClient, opts = {}) {
+  let node = SPVNode({ network: 'testnet' })
+
   // get info about signatory set
   let validators = convertValidatorsToLotion(pegClient.validators)
   let signatoryKeys = await pegClient.state.bitcoin.signatoryKeys
   let p2ss = reserve.createOutput(validators, signatoryKeys)
+  let p2ssHash = bitcoin.payments.p2wsh({
+    output: p2ss,
+    network: node.bitcoinJsNetwork
+  }).hash
 
-  let bitcoinTip = await relayHeaders(pegClient, Object.assign({}, opts, { tries: 3 }))
-  let tipHash = getBlockHash(bitcoinTip)
+  node.filter(p2ssHash)
+  node.start()
 
-  // connect to bitcoin peers
-  let peers = PeerGroup(params.net) // TODO: configure
-  peers.connect()
-  await waitForPeers(peers)
+  await relayHeaders(pegClient, Object.assign({}, opts, { tries: 3, node }))
 
-  // fetch block
-  // TODO: fetch back a few blocks?
-  let block = await new Promise((resolve, reject) => {
-    // TODO: filter so we don't have to download whole blocks
-    peers.getBlocks([ tipHash ], (err, blocks) => {
-      if (err) return reject(err)
-      resolve(blocks[0])
-    })
+  let processedTxs = await pegClient.state.bitcoin.processedTxs
+
+  // scan for deposit txs, get list of blocks which have at least 1
+  let blockHashes = []
+  await node.scan(20, (tx, header) => {
+    // skip if already relayed to chain
+    let txHashBase64 = getTxHash(tx).toString('base64')
+    if (processedTxs[txHashBase64]) return
+
+    // add blockHash to list, will fetch and build proof
+    let blockHash = getBlockHash(header)
+    if (blockHashes.length === 0 || !blockHash.equals(blockHashes[blockHashes.length - 1])) {
+      blockHashes.push(blockHash)
+    }
   })
 
+  // fetch entire blocks so we can build proofs
+  let blocks = await new Promise((resolve, reject) => {
+    // TODO: filter so we don't have to download whole blocks
+    node.peers.getBlocks(blockHashes, (err, blocks) => {
+      if (err) return reject(err)
+      resolve(blocks)
+    })
+  })
+  // add height property to blocks
+  for (let block of blocks) {
+    let hash = getBlockHash(block.header)
+    let header = node.chain.getByHash(hash)
+    block.header.height = header.height
+  }
+
+  node.close()
+
+  // submit a merkle proof tx to chain for each block, and ensure it got accepted
+  let relayJobs = blocks.map((block) => relayBlock(pegClient, block, p2ss))
+  let txids = await Promise.all(relayJobs)
+  return [].concat(...txids)
+}
+
+async function relayBlock (pegClient, block, p2ss) {
   // relay any unprocessed txs (max of 4 tries)
   for (let i = 0; i < 4; i++) {
     let processedTxs = await pegClient.state.bitcoin.processedTxs
@@ -128,12 +163,14 @@ async function relayDeposits (pegClient, opts = {}) {
     delete proof.merkleRoot
 
     // we ignore response since it might have already been relayed by someone else
-    await pegClient.send({
+    let tx = {
       type: 'bitcoin',
-      height: bitcoinTip.height,
+      height: block.header.height,
       proof,
       transactions: includeTxs.map((tx) => encodeTx(tx))
-    })
+    }
+    let res = await pegClient.send(tx)
+    debug('sent deposit relay transaction: ', tx, res)
 
     await new Promise((resolve) => setTimeout(resolve, 1000))
   }
