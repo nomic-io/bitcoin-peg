@@ -52,7 +52,25 @@ async function relayHeaders (pegClient, opts = {}) {
     throw Error('Failed to relay headers')
   }
 
-  let toRelay = chain.store.slice(tip.height - chain.height())
+  // check for reorg blocks to relay
+  let reorg = []
+  for (let i = chainState2.length - 1; i >= 0; i--) {
+    let pegBlock = chainState2[i]
+    let localBlock = chain.getByHeight(pegBlock.height)
+
+    // found fork point
+    if (getBlockHash(pegBlock).equals(getBlockHash(localBlock))) {
+      reorg = reorg.reverse()
+      break
+    }
+
+    reorg.push(localBlock)
+  }
+
+  let toRelay = reorg.concat(
+    chain.store.slice(tip.height - chain.height())
+  )
+
   for (let i = 0; i < toRelay.length; i += HEADER_BATCH_SIZE) {
     let batch = toRelay.slice(i, i + HEADER_BATCH_SIZE)
     // TODO: emit errors that don't have to do with duplicate headers
