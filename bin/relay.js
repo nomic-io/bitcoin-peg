@@ -13,7 +13,6 @@ let {
 // TODO: get this from somewhere else
 let { getTxHash } = require('bitcoin-net/src/utils.js')
 
-// TODO: scan through past bitcoin blocks for deposits
 // TODO: keep one webcoin node alive and watch for new blocks/deposits
 // TODO: listen for transactions on lotion light client
 
@@ -27,21 +26,15 @@ async function main () {
   let client = await connect(gci)
   console.log('connected to peg zone network')
 
-  while (true) {
-    try {
-      await relayDeposits(client)
-    } catch (err) {
-      console.error(err.stack)
-    }
+  relayDeposits(client)
+    .catch((err) => console.error(err.stack))
 
-    try {
-      await relayDisbursal(client)
-    } catch (err) {
-      console.error(err.stack)
-    }
+  relayDisbursal(client)
+    .catch((err) => console.error(err.stack))
 
-    await sleep(30)
-  }
+  await sleep(60)
+
+  process.exit()
 }
 
 async function relayDisbursal (client) {
@@ -73,6 +66,7 @@ function broadcastTx (tx) {
       if (broadcastPeers.peers.length < 7) return
       if (listenPeers.peers.length < 7) return
       inventory.broadcast(tx)
+      listenPeers.send('mempool')
     }, 3000)
 
     // count how many peers relay our tx back to us so we know they liked it
@@ -105,4 +99,7 @@ function sleep (seconds = 1) {
     setTimeout(resolve, seconds * 1000))
 }
 
-main().catch(function (err) { throw err })
+main().catch((err) => {
+  console.error(err.stack)
+  process.exit(1)
+})
