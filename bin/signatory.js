@@ -18,8 +18,17 @@ async function main () {
   let privValidatorPath = process.argv[3]
 
   if (gci == null || privValidatorPath == null) {
-    console.error('usage: node signatory.js <GCI> <priv_validator>')
+    console.error('usage: node signatory.js <GCI or genesis> <priv_validator>')
     process.exit(1)
+  }
+
+  // maybe read genesis
+  let genesis
+  if (gci.includes('/') || gci.includes('\\')) {
+    let genesisPath = gci
+    gci = null
+    let genesisJSON = readFileSync(genesisPath)
+    genesis = JSON.parse(genesisJSON)
   }
 
   // load privValidator
@@ -40,7 +49,10 @@ async function main () {
     console.log(`generated signatory private key, saved to "${signatoryKeyPath}"`)
   }
 
-  let client = await connect(gci)
+  let client = await connect(gci, {
+    genesis,
+    nodes: gci ? null : ['ws://localhost:1338']
+  })
   console.log('connected to peg zone network')
 
   // ensure we haven't committed to a key yet
