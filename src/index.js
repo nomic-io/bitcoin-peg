@@ -25,6 +25,8 @@ const SIGNATORY_KEY_LENGTH = 33
 
 const MIN_WITHDRAWAL = 2500 // in satoshis
 
+const MAX_HEADERS = 2016
+
 module.exports = function (initialHeader, coinName, chainOpts = {}) {
   if (!initialHeader) {
     throw Error('"initialHeader" argument is required')
@@ -90,6 +92,12 @@ module.exports = function (initialHeader, coinName, chainOpts = {}) {
     })
     // TODO: pass in block timestamp to use current time in verification
     chain.add(tx.headers)
+
+    // truncate length of headers array
+    if (state.chain.length > MAX_HEADERS) {
+      let removeCount = state.chain.length - MAX_HEADERS
+      state.chain.splice(0, removeCount)
+    }
   }
 
   // deposit transaction(s) being relayed to this chain,
