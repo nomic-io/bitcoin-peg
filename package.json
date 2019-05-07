@@ -25,7 +25,7 @@
     "depcheck": "^0.6.11",
     "deterministic-json": "^1.0.5",
     "lotion": "^0.4.5",
-    "lotion-connect": "^0.1.12",
+    "lotion-connect": "^0.1.19",
     "nyc": "^13.1.0",
     "standard": "^12.0.1",
     "tendermint-node": "^3.5.0",
