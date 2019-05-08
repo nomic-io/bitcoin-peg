@@ -25,7 +25,7 @@ const SIGNATORY_KEY_LENGTH = 33
 
 const MIN_WITHDRAWAL = 2500 // in satoshis
 
-const MAX_HEADERS = 2016
+const MAX_HEADERS = 4032
 
 module.exports = function (initialHeader, coinName, chainOpts = {}) {
   if (!initialHeader) {
