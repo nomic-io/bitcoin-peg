@@ -1,6 +1,6 @@
 {
   "name": "bitcoin-peg",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Cosmos Bitcoin peg zone module for Lotion/Coins",
   "main": "index.js",
   "dependencies": {
