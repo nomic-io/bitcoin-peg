@@ -10,6 +10,7 @@ const base58 = require('bs58check')
 const createBitcoind = require('bitcoind')
 const lotion = require('lotion')
 const tendermint = require('tendermint-node')
+const { RpcClient } = require('tendermint')
 const coins = require('coins')
 const peg = require('..')
 
@@ -40,7 +41,7 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
   await bitcoind.started()
   console.log('started bitcoind')
 
-  await bitcoind.rpc.generate(200)
+  await bitcoind.rpc.generate(101)
   let genesisHash = await bitcoind.rpc.getBlockHash(0)
   let genesisBlockRpc = await bitcoind.rpc.getBlock(genesisHash)
   let genesisBlock = {
@@ -57,25 +58,39 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
   let validators = []
   for (let i = 0; i < VALIDATOR_COUNT; i++) {
     let privValidatorJson = tendermint.genValidator()
-    let privValidator = JSON.parse(privValidatorJson)
+    let privValidator = JSON.parse(privValidatorJson).Key
     let privValidatorPath = join(dataPath, `priv_validator${i}.json`)
-    writeFileSync(privValidatorPath, privValidatorJson)
+    writeFileSync(privValidatorPath, JSON.stringify(privValidator))
     validators.push({ privValidator, privValidatorPath })
   }
 
   let genesisPath = join(dataPath, 'genesis.json')
-  writeFileSync(genesisPath, createGenesis(validators))
+  let genesisJson = createGenesis(validators)
+  writeFileSync(genesisPath, genesisJson)
 
   let startPromises = []
   for (let i = 0; i < validators.length; i++) {
     let v = validators[i]
+    let peers = []
+    if (i > 0) {
+      while (true) {
+        try {
+          let rpc = RpcClient('http://localhost:10900')
+          let peerId = (await rpc.status()).node_info.id
+          peers.push(`${peerId}@localhost:10800`)
+          break
+        } catch (err) {
+          await new Promise((resolve) => setTimeout(resolve, 1000))
+        }
+      }
+    }
     let app = lotion({
       initialState: {},
       keyPath: v.privValidatorPath,
       genesisPath,
       p2pPort: 10800 + i,
       rpcPort: 10900 + i,
-      peers: [ 'localhost:10800' ]
+      peers
     })
     app.use('bitcoin', peg(genesisBlock, 'pbtc', {
       noRetargeting: true
@@ -91,7 +106,11 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
   console.log('started peg network nodes')
 
   await new Promise((resolve) => setTimeout(resolve, 1000))
-  let client = await lotion.connect(appInfo.GCI)
+  let client = await lotion.connect(null, {
+    nodes: [ 'ws://localhost:10900' ],
+    genesis: JSON.parse(genesisJson)
+  })
+  client.on('error', t.fail)
   console.log('connected lotion client')
 
   // check initial peg state
@@ -125,9 +144,10 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
     chainOpts: {
       maxTarget: Buffer.from('7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 'hex'),
       noRetargeting: true
-    }
+    },
+    batchSize: 50
   })
-  t.is(await client.state.bitcoin.chain.length, 201)
+  t.is(await client.state.bitcoin.chain.length, 102)
   console.log('relayed bitcoin headers')
 
   // create coins wallet
@@ -156,7 +176,14 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
   console.log('sent deposit transaction')
 
   // relay deposit
-  await peg.relay.relayDeposits(client)
+  await peg.relay.relayDeposits(client, {
+    netOpts: { numPeers: 1 },
+    chainOpts: {
+      maxTarget: Buffer.from('7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', 'hex'),
+      noRetargeting: true
+    },
+    params: require('webcoin-bitcoin-testnet')
+  })
   deepEqual(t, await client.state.bitcoin.processedTxs, {
     [depositTxid.toString('base64')]: true
   })
@@ -171,14 +198,15 @@ test('integration (bitcoind + lotion app + relayers)', async (t) => {
       sequence: 0
     }
   })
+  console.log(await client.state.bitcoin.utxos)
   console.log('relayed deposit')
 
-  await wallet.send({
+  let res = await wallet.send({
     type: 'bitcoin',
     amount: 1e8,
     script: Buffer.from([ 1, 2, 3, 4 ])
   })
-  deepEqual(t, await client.state.bitcoin.utxos, [])
+  deepEqual(t, await client.state.bitcoin.utxos.length, 0)
   deepEqual(t, await client.state.bitcoin.withdrawals, []) // (already processed and put into "signingTx")
   t.is(await client.state.bitcoin.signedTx, null)
   deepEqual(t, await client.state.bitcoin.signingTx, {
@@ -230,12 +258,18 @@ function createGenesis (validators) {
       "genesis_time": "2019-01-03T18:15:05.000Z",
       "chain_id": "bitcoin-peg",
       "consensus_params": {
-        "block_size_params": {
+        "block": {
           "max_bytes": "22020096",
-          "max_gas": "-1"
+          "max_gas": "-1",
+          "time_iota_ms": "1000"
         },
-        "evidence_params": {
+          "evidence": {
           "max_age": "100000"
+        },
+        "validator": {
+          "pub_key_types": [
+            "ed25519"
+          ]
         }
       },
       "validators": [
