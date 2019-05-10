@@ -14,13 +14,12 @@ const reserve = require('./reserve.js')
 // TODO: get this from somewhere else
 const { getTxHash, getBlockHash } = require('bitcoin-net/src/utils.js')
 
-const HEADER_BATCH_SIZE = 250
-
 // fetches bitcoin headers and relays any unprocessed ones to the peg chain
 async function relayHeaders (pegClient, opts = {}) {
   let tries = opts.tries != null ? opts.tries : 1
   let netOpts = opts.netOpts
   let chainOpts = opts.chainOpts
+  let batchSize = opts.batchSize || 250
 
   let chainState = await pegClient.state.bitcoin.chain
   let chain = Blockchain({
@@ -71,8 +70,8 @@ async function relayHeaders (pegClient, opts = {}) {
     chain.store.slice(tip.height - chain.height())
   )
 
-  for (let i = 0; i < toRelay.length; i += HEADER_BATCH_SIZE) {
-    let batch = toRelay.slice(i, i + HEADER_BATCH_SIZE)
+  for (let i = 0; i < toRelay.length; i += batchSize) {
+    let batch = toRelay.slice(i, i + batchSize)
     // TODO: emit errors that don't have to do with duplicate headers
     await pegClient.send({
       type: 'bitcoin',
@@ -87,7 +86,23 @@ async function relayHeaders (pegClient, opts = {}) {
 // fetches a bitcoin block, and relays the relevant transactions in it (plus merkle proof)
 // to the peg chain
 async function relayDeposits (pegClient, opts = {}) {
-  let node = SPVNode({ network: 'testnet' })
+  opts.chainOpts = Object.assign({}, opts.chainOpts, {
+    store: await pegClient.state.bitcoin.chain,
+    indexed: true,
+    // TODO: disable for mainnet
+    allowMinDifficultyBlocks: true
+  })
+
+  await relayHeaders(pegClient, Object.assign({}, opts, { tries: 3 }))
+
+  let node = SPVNode({
+    network: 'testnet', // TODO: configure this
+    netOpts: opts.netOpts,
+    chainOpts: opts.chainOpts
+  })
+  node.on('error', (err) => {
+    pegClient.emit('error', err)
+  })
 
   // get info about signatory set
   let validators = convertValidatorsToLotion(pegClient.validators)
@@ -98,12 +113,10 @@ async function relayDeposits (pegClient, opts = {}) {
     network: node.bitcoinJsNetwork
   }).hash
 
+  let processedTxs = await pegClient.state.bitcoin.processedTxs
+
   node.filter(p2ssHash)
   node.start()
-
-  await relayHeaders(pegClient, Object.assign({}, opts, { tries: 3, node }))
-
-  let processedTxs = await pegClient.state.bitcoin.processedTxs
 
   // scan for deposit txs, get list of blocks which have at least 1
   let blockHashes = []
