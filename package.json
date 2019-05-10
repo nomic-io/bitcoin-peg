@@ -24,11 +24,12 @@
     "coins": "^4.2.1",
     "depcheck": "^0.6.11",
     "deterministic-json": "^1.0.5",
-    "lotion": "^0.4.5",
-    "lotion-connect": "^0.1.19",
+    "lotion": "^0.4.23",
+    "lotion-connect": "^0.1.21",
     "nyc": "^13.1.0",
     "standard": "^12.0.1",
-    "tendermint-node": "^3.5.0",
+    "tendermint": "^4.0.6",
+    "tendermint-node": "^5.1.2",
     "webcoin": "^3.1.0"
   },
   "scripts": {
