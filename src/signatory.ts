@@ -1,17 +1,17 @@
 'use strict'
 
-const { createHash } = require('crypto')
-const ed = require('ed25519-supercop')
-const secp = require('secp256k1')
-const bitcoin = require('bitcoinjs-lib')
-const {
+import { createHash } from 'crypto'
+import ed = require('ed25519-supercop')
+import secp = require('secp256k1')
+import bitcoin = require('bitcoinjs-lib')
+import {
   getSignatorySet,
   buildOutgoingTx,
   createWitnessScript
-} = require('./reserve.js')
-const { convertValidatorsToLotion } = require('./relay.js')
+} from './reserve'
+import { convertValidatorsToLotion } from './relay.js'
 
-async function commitPubkey (client, privValidator, signatoryPub) {
+export async function commitPubkey(client, privValidator, signatoryPub) {
   if (!secp.publicKeyVerify(signatoryPub)) {
     throw Error('Invalid signatory public key')
   }
@@ -33,15 +33,17 @@ async function commitPubkey (client, privValidator, signatoryPub) {
 
   let signature = ed25519Sign(privValidator, signatoryPub)
 
-  return checkResult(await client.send({
-    type: 'bitcoin',
-    signatoryIndex,
-    signatoryKey: signatoryPub,
-    signature
-  }))
+  return checkResult(
+    await client.send({
+      type: 'bitcoin',
+      signatoryIndex,
+      signatoryKey: signatoryPub,
+      signature
+    })
+  )
 }
 
-async function signDisbursal (client, signatoryPriv) {
+export async function signDisbursal(client, signatoryPriv) {
   let signatoryPub = secp.publicKeyCreate(signatoryPriv)
   let validators = convertValidatorsToLotion(client.validators)
   let signatoryKeys = await client.state.bitcoin.signatoryKeys
@@ -68,24 +70,34 @@ async function signDisbursal (client, signatoryPriv) {
 
   let p2ss = createWitnessScript(validators, signatoryKeys)
   let sigHashes = signingTx.inputs.map((input, i) =>
-    bitcoinTx.hashForWitnessV0(i, p2ss, input.amount, bitcoin.Transaction.SIGHASH_ALL))
-  let signatures = sigHashes.map((hash) => {
+    bitcoinTx.hashForWitnessV0(
+      i,
+      p2ss,
+      input.amount,
+      bitcoin.Transaction.SIGHASH_ALL
+    )
+  )
+  let signatures = sigHashes.map(hash => {
     let signature = secp.sign(hash, signatoryPriv).signature
     return secp.signatureExport(signature)
   })
 
-  return checkResult(await client.send({
-    type: 'bitcoin',
-    signatures,
-    signatoryIndex
-  }))
+  return checkResult(
+    await client.send({
+      type: 'bitcoin',
+      signatures,
+      signatoryIndex
+    })
+  )
 }
 
-function sha512 (data) {
-  return createHash('sha512').update(data).digest()
+function sha512(data) {
+  return createHash('sha512')
+    .update(data)
+    .digest()
 }
 
-function ed25519Sign (privValidator, message) {
+function ed25519Sign(privValidator, message) {
   if (privValidator.priv_key.type !== 'tendermint/PrivKeyEd25519') {
     throw Error('Expected privkey type "tendermint/PrivKeyEd25519"')
   }
@@ -98,7 +110,7 @@ function ed25519Sign (privValidator, message) {
 }
 
 // TODO: move this somewhere else
-function convertEd25519 (ref10Priv) {
+export function convertEd25519(ref10Priv) {
   // see https://github.com/orlp/ed25519/issues/10#issuecomment-242761092
   let privConverted = sha512(ref10Priv.slice(0, 32))
   privConverted[0] &= 248
@@ -107,16 +119,10 @@ function convertEd25519 (ref10Priv) {
   return privConverted
 }
 
-function checkResult (res) {
+function checkResult(res) {
   if (res.check_tx.code || res.deliver_tx.code) {
     let log = res.check_tx.log || res.deliver_tx.log
     throw Error(log)
   }
   return res
-}
-
-module.exports = {
-  commitPubkey,
-  signDisbursal,
-  convertEd25519
 }

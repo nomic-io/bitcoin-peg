@@ -2,7 +2,7 @@
 
 const debug = require('debug')('bitcoin-peg:relay')
 const SPVNode = require('webcoin')
-const bitcoin = require('bitcoinjs-lib')
+import bitcoin = require('bitcoinjs-lib')
 const { PeerGroup } = require('bitcoin-net')
 const Blockchain = require('blockchain-spv')
 const params = require('webcoin-bitcoin-testnet')
@@ -15,7 +15,7 @@ const reserve = require('./reserve.js')
 const { getTxHash, getBlockHash } = require('bitcoin-net/src/utils.js')
 
 // fetches bitcoin headers and relays any unprocessed ones to the peg chain
-async function relayHeaders (pegClient, opts = {}) {
+export async function relayHeaders(pegClient, opts = {}) {
   let tries = opts.tries != null ? opts.tries : 1
   let netOpts = opts.netOpts
   let chainOpts = opts.chainOpts
@@ -66,9 +66,7 @@ async function relayHeaders (pegClient, opts = {}) {
     reorg.push(localBlock)
   }
 
-  let toRelay = reorg.concat(
-    chain.store.slice(tip.height - chain.height())
-  )
+  let toRelay = reorg.concat(chain.store.slice(tip.height - chain.height()))
 
   for (let i = 0; i < toRelay.length; i += batchSize) {
     let batch = toRelay.slice(i, i + batchSize)
@@ -85,7 +83,7 @@ async function relayHeaders (pegClient, opts = {}) {
 
 // fetches a bitcoin block, and relays the relevant transactions in it (plus merkle proof)
 // to the peg chain
-async function relayDeposits (pegClient, opts = {}) {
+export async function relayDeposits(pegClient, opts = {}) {
   opts.chainOpts = Object.assign({}, opts.chainOpts, {
     store: await pegClient.state.bitcoin.chain,
     indexed: true,
@@ -100,7 +98,7 @@ async function relayDeposits (pegClient, opts = {}) {
     netOpts: opts.netOpts,
     chainOpts: opts.chainOpts
   })
-  node.on('error', (err) => {
+  node.on('error', err => {
     pegClient.emit('error', err)
   })
 
@@ -127,7 +125,10 @@ async function relayDeposits (pegClient, opts = {}) {
 
     // add blockHash to list, will fetch and build proof
     let blockHash = getBlockHash(header)
-    if (blockHashes.length === 0 || !blockHash.equals(blockHashes[blockHashes.length - 1])) {
+    if (
+      blockHashes.length === 0 ||
+      !blockHash.equals(blockHashes[blockHashes.length - 1])
+    ) {
       blockHashes.push(blockHash)
     }
   })
@@ -150,12 +151,12 @@ async function relayDeposits (pegClient, opts = {}) {
   node.close()
 
   // submit a merkle proof tx to chain for each block, and ensure it got accepted
-  let relayJobs = blocks.map((block) => relayBlock(pegClient, block, p2ss))
+  let relayJobs = blocks.map(block => relayBlock(pegClient, block, p2ss))
   let txids = await Promise.all(relayJobs)
   return [].concat(...txids)
 }
 
-async function relayBlock (pegClient, block, p2ss) {
+async function relayBlock(pegClient, block, p2ss) {
   // relay any unprocessed txs (max of 4 tries)
   for (let i = 0; i < 4; i++) {
     let processedTxs = await pegClient.state.bitcoin.processedTxs
@@ -198,19 +199,19 @@ async function relayBlock (pegClient, block, p2ss) {
       type: 'bitcoin',
       height: block.header.height,
       proof,
-      transactions: includeTxs.map((tx) => encodeTx(tx))
+      transactions: includeTxs.map(tx => encodeTx(tx))
     }
     let res = await pegClient.send(tx)
     debug('sent deposit relay transaction: ', tx, res)
 
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    await new Promise(resolve => setTimeout(resolve, 1000))
   }
 
   throw Error('Failed to fetch and relay block')
 }
 
 // calls `relayDeposits` and ensures given txid was relayed
-async function relayDeposit (pegClient, txid) {
+export async function relayDeposit(pegClient, txid) {
   if (!Buffer.isBuffer(txid)) {
     throw Error('Must specify txid')
   }
@@ -220,7 +221,7 @@ async function relayDeposit (pegClient, txid) {
   let txids = await relayDeposits(pegClient)
 
   // check to see if given txid was relayed in this block
-  let txidsBase64 = txids.map((txid) => txid.toString('base64'))
+  let txidsBase64 = txids.map(txid => txid.toString('base64'))
   if (txidsBase64.includes(txidBase64)) {
     // success, txid was relayed
     return
@@ -240,7 +241,7 @@ async function relayDeposit (pegClient, txid) {
 }
 
 // TODO: build the 3 separate transactions as outlined in the design document
-function buildDisbursalTransaction (signedTx, validators, signatoryKeys) {
+export function buildDisbursalTransaction(signedTx, validators, signatoryKeys) {
   // build tx
   let tx = reserve.buildOutgoingTx(signedTx, validators, signatoryKeys)
 
@@ -261,7 +262,7 @@ function buildDisbursalTransaction (signedTx, validators, signatoryKeys) {
   return tx
 }
 
-function isDepositTx (tx, p2ss) {
+export function isDepositTx(tx, p2ss) {
   if (tx.outs.length !== 2) return false
   if (!tx.outs[0].script.equals(p2ss)) return false
   // TODO: check 2nd output is correct format
@@ -271,7 +272,7 @@ function isDepositTx (tx, p2ss) {
 
 // converts validator set from Tendermint RPC format
 // to Lotion {<pubkeyB64>: <votingPower>, ...} object
-function convertValidatorsToLotion (validators) {
+export function convertValidatorsToLotion(validators) {
   return validators.reduce((obj, v) => {
     obj[v.pub_key.value] = v.voting_power
     return obj
@@ -280,17 +281,16 @@ function convertValidatorsToLotion (validators) {
 
 // gets the signatures for the given input index from the
 // peg network's signedTx state object as hex
-function getSignatures (signatures, index) {
-  return signatures.map((sigs) => {
+function getSignatures(signatures, index) {
+  return signatures.map(sigs => {
     if (sigs == null) return null
-    return sigs[index].toString('hex') +
-      '01' // SIGHASH_ALL
+    return sigs[index].toString('hex') + '01' // SIGHASH_ALL
   })
 }
 
-function waitForPeers (peers) {
-  return new Promise((resolve) => {
-    function onPeer (peer) {
+function waitForPeers(peers) {
+  return new Promise(resolve => {
+    function onPeer(peer) {
       let isLocalhost = peer.socket.remoteAddress === '127.0.0.1'
       if (!isLocalhost && peers.peers.length < 4) {
         return
@@ -300,13 +300,4 @@ function waitForPeers (peers) {
     }
     peers.on('peer', onPeer)
   })
-}
-
-module.exports = {
-  relayHeaders,
-  relayDeposits,
-  relayDeposit,
-  buildDisbursalTransaction,
-  isDepositTx,
-  convertValidatorsToLotion
 }

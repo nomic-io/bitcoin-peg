@@ -1,9 +1,9 @@
 'use strict'
 
-const bitcoin = require('bitcoinjs-lib')
-const { createOutput } = require('./reserve.js')
+import { createOutput } from './reserve'
+let bitcoin = require('bitcoinjs-lib')
 
-function createTx (validators, signatoryKeys, utxos, destAddress) {
+export function createTx(validators, signatoryKeys, utxos, destAddress) {
   let tx = new bitcoin.Transaction()
 
   // add the utxos as inputs
@@ -25,14 +25,10 @@ function createTx (validators, signatoryKeys, utxos, destAddress) {
 
   // output that commits to a destination address on the peg chain
   let addressOutput = bitcoin.payments.embed({
-    data: [ destAddress ],
+    data: [destAddress],
     network: bitcoin.networks.testnet // TODO
   }).output
   tx.addOutput(addressOutput, 0)
 
   return tx
-}
-
-module.exports = {
-  createTx
 }
