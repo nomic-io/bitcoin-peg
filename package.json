@@ -4,6 +4,7 @@
   "description": "Cosmos Bitcoin peg zone module for Lotion/Coins",
   "main": "index.js",
   "dependencies": {
+    "@types/node": "12.0.2",
     "bitcoin-merkle-proof": "^0.1.0",
     "bitcoin-net": "^5.2.0",
     "bitcoin-protocol": "^4.1.0",
