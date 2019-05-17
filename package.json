@@ -28,6 +28,7 @@
     "lotion": "0.4.26",
     "lotion-connect": "0.1.22",
     "nyc": "^13.1.0",
+    "random-bytes-seed": "1.0.3",
     "standard": "^12.0.1",
     "tendermint": "4.0.6",
     "tendermint-node": "^5.1.2",
