@@ -3,7 +3,7 @@
 import { createHash } from 'crypto'
 import ed = require('ed25519-supercop')
 import secp = require('secp256k1')
-import bitcoin = require('bitcoinjs-lib')
+import * as bitcoin from 'bitcoinjs-lib'
 import {
   getSignatorySet,
   buildOutgoingTx,

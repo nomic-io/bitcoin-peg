@@ -2,7 +2,7 @@
 
 const debug = require('debug')('bitcoin-peg:relay')
 const SPVNode = require('webcoin')
-import bitcoin = require('bitcoinjs-lib')
+import * as bitcoin from 'bitcoinjs-lib'
 const { PeerGroup } = require('bitcoin-net')
 const Blockchain = require('blockchain-spv')
 const params = require('webcoin-bitcoin-testnet')
@@ -15,7 +15,7 @@ const reserve = require('./reserve.js')
 const { getTxHash, getBlockHash } = require('bitcoin-net/src/utils.js')
 
 // fetches bitcoin headers and relays any unprocessed ones to the peg chain
-export async function relayHeaders(pegClient, opts = {}) {
+export async function relayHeaders(pegClient, opts: any = {}) {
   let tries = opts.tries != null ? opts.tries : 1
   let netOpts = opts.netOpts
   let chainOpts = opts.chainOpts
@@ -83,7 +83,7 @@ export async function relayHeaders(pegClient, opts = {}) {
 
 // fetches a bitcoin block, and relays the relevant transactions in it (plus merkle proof)
 // to the peg chain
-export async function relayDeposits(pegClient, opts = {}) {
+export async function relayDeposits(pegClient, opts: any = {}) {
   opts.chainOpts = Object.assign({}, opts.chainOpts, {
     store: await pegClient.state.bitcoin.chain,
     indexed: true,
@@ -134,7 +134,7 @@ export async function relayDeposits(pegClient, opts = {}) {
   })
 
   // fetch entire blocks so we can build proofs
-  let blocks = await new Promise((resolve, reject) => {
+  let blocks: any = await new Promise((resolve, reject) => {
     // TODO: filter so we don't have to download whole blocks
     node.peers.getBlocks(blockHashes, (err, blocks) => {
       if (err) return reject(err)

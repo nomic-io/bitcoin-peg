@@ -1,6 +1,7 @@
 'use strict'
 
-let { script, Transaction, payments, networks } = require('bitcoinjs-lib')
+import { script, Transaction, payments, networks } from 'bitcoinjs-lib'
+import { ValidatorMap, SignatoryMap } from './types'
 
 const MAX_SIGNATORIES = 76
 const MIN_RELAY_FEE = 1000
@@ -53,15 +54,19 @@ export function getVotingPowerThreshold(signatories) {
   return twoThirdsVotingPower
 }
 
-export function createWitnessScript(validators, signatoryKeys) {
+export function createWitnessScript(
+  validators: ValidatorMap,
+  signatoryKeys: SignatoryMap
+) {
   // get signatory key for each signatory
   let signatories = getSignatorySet(validators)
     .map(({ validatorKey, votingPower }) => {
-      let pubkey = signatoryKeys[validatorKey]
-      if (pubkey) {
-        pubkey = pubkey.toString('hex')
+      let pubkeyHex
+      let pubkeyBytes: Buffer = signatoryKeys[validatorKey]
+      if (pubkeyBytes) {
+        pubkeyHex = pubkeyBytes.toString('hex')
       }
-      return { pubkey, votingPower }
+      return { pubkey: pubkeyHex, votingPower }
     })
     .filter(s => s.pubkey != null)
 
@@ -97,7 +102,7 @@ function trim(s) {
 // gets the array of validators who are in the signatory set.
 // note that each will commit to a separate secp256k1 signatory
 // key for bitcoin transactions.
-export function getSignatorySet(validators) {
+export function getSignatorySet(validators: ValidatorMap) {
   let entries = Object.entries(validators)
   entries.sort((a: any, b: any) => {
     // sort by voting power, breaking ties with pubkey
@@ -156,7 +161,10 @@ export function buildOutgoingTx(signingTx, validators, signatoryKeys) {
   return tx
 }
 
-export function createOutput(validators, signatoryKeys) {
+export function createOutput(
+  validators: ValidatorMap,
+  signatoryKeys: SignatoryMap
+) {
   // p2ss = pay to signatory set
   let p2ss = createWitnessScript(validators, signatoryKeys)
 

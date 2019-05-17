@@ -1,12 +1,19 @@
 'use strict'
 
 import { createOutput } from './reserve'
-let bitcoin = require('bitcoinjs-lib')
+import { ValidatorMap, SignatoryMap } from './types'
+import * as bitcoin from 'bitcoinjs-lib'
 
-export function createTx(validators, signatoryKeys, utxos, destAddress) {
+export function createTx(
+  validators: ValidatorMap,
+  signatoryKeys: SignatoryMap,
+  utxos: bitcoin.TxOutput[],
+  destAddress: Buffer
+) {
   let tx = new bitcoin.Transaction()
 
   // add the utxos as inputs
+
   let amount = 0
   for (let utxo of utxos) {
     tx.addInput(utxo.txid, utxo.vout)
