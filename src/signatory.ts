@@ -4,6 +4,7 @@ import { createHash } from 'crypto'
 import ed = require('ed25519-supercop')
 import secp = require('secp256k1')
 import * as bitcoin from 'bitcoinjs-lib'
+import { ValidatorKey } from './types'
 import {
   getSignatorySet,
   buildOutgoingTx,
@@ -11,7 +12,11 @@ import {
 } from './reserve'
 import { convertValidatorsToLotion } from './relay.js'
 
-export async function commitPubkey(client, privValidator, signatoryPub) {
+export async function commitPubkey(
+  client,
+  privValidator: ValidatorKey,
+  signatoryPub: Buffer
+) {
   if (!secp.publicKeyVerify(signatoryPub)) {
     throw Error('Invalid signatory public key')
   }
