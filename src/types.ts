@@ -8,3 +8,18 @@ export interface ValidatorMap {
 export interface SignatoryMap {
   [index: string]: Buffer
 }
+
+export enum KeyType {
+  Ed25519 = 'tendermint/PrivKeyEd25519'
+}
+
+export interface ValidatorKey {
+  priv_key: {
+    type: KeyType
+    value: string
+  }
+  pub_key?: {
+    type: KeyType
+    value: string
+  }
+}
