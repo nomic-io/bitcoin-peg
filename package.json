@@ -27,6 +27,7 @@
     "deterministic-json": "^1.0.5",
     "lotion": "0.4.26",
     "lotion-connect": "0.1.22",
+    "lotion-mock": "1.0.0",
     "nyc": "^13.1.0",
     "random-bytes-seed": "1.0.3",
     "standard": "^12.0.1",
