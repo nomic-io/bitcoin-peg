@@ -6,6 +6,9 @@ module.exports = function(wallaby) {
     },
     files: ['src/*.ts'],
     tests: ['test/*.ts'],
-    testFramework: 'ava'
+    testFramework: 'ava',
+    workers: {
+      restart: true
+    }
   }
 }

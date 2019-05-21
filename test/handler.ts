@@ -23,7 +23,6 @@ async function makeBitcoind() {
     txindex: 1
   })
   await bitcoind.started()
-
   return { rpc: bitcoind.rpc, port: rpcport, node: bitcoind }
 }
 
@@ -32,8 +31,8 @@ test.beforeEach(async function(t) {
   t.context.bitcoind = btcd
 })
 
-test.afterEach(async function(t) {
-  t.context.bitcoind.node.kill('SIGINT')
+test.afterEach.always(async function(t) {
+  t.context.bitcoind.node.kill()
 })
 
 let trustedHeader = {
@@ -76,6 +75,4 @@ app.start()
 
 test('bitcoin headers transaction', async function(t) {
   let btcd = t.context.bitcoind
-  t.is(2, 2)
-  await btcd.rpc.getNetworkInfo()
 })
