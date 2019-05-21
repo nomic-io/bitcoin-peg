@@ -20,11 +20,12 @@
   "devDependencies": {
     "ava": "^1.1.0",
     "bitcoin-inventory": "^1.2.2",
-    "bitcoind": "^1.2.1",
+    "bitcoind": "github:nomic-io/node-bitcoind#use-correct-rpc-port",
     "bs58check": "^2.1.2",
     "coins": "^4.2.1",
     "depcheck": "^0.6.11",
     "deterministic-json": "^1.0.5",
+    "get-port": "5.0.0",
     "lotion": "0.4.26",
     "lotion-connect": "0.1.22",
     "lotion-mock": "1.0.0",

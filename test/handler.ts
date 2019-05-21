@@ -1,7 +1,40 @@
 import * as bitcoinPeg from '../src/index'
-import test from 'ava'
+import anyTest, { TestInterface } from 'ava'
+let test = anyTest as TestInterface<{ bitcoind: any }>
 import * as coins from 'coins'
 import lotion = require('lotion-mock')
+import createBitcoind = require('bitcoind')
+import { tmpdir } from 'os'
+import { mkdirSync } from 'fs'
+import { join } from 'path'
+import getPort = require('get-port')
+
+async function makeBitcoind() {
+  let dataPath = join(tmpdir(), Math.random().toString(36))
+  mkdirSync(dataPath)
+  let rpcport = await getPort()
+  let bitcoind = createBitcoind({
+    rpcport,
+    listen: 0,
+    regtest: false,
+    datadir: dataPath,
+    debug: 1,
+    deprecatedrpc: 'signrawtransaction',
+    txindex: 1
+  })
+  await bitcoind.started()
+
+  return { rpc: bitcoind.rpc, port: rpcport, node: bitcoind }
+}
+
+test.beforeEach(async function(t) {
+  let btcd = await makeBitcoind()
+  t.context.bitcoind = btcd
+})
+
+test.afterEach(async function(t) {
+  t.context.bitcoind.node.kill('SIGINT')
+})
 
 let trustedHeader = {
   version: 1073676288,
@@ -37,6 +70,12 @@ app.use(
 
 app.start()
 
-test('bitcoin deposit transaction', function(t) {
-  console.log(app.state)
+/**
+ * Set up local bitcoin fullnode
+ */
+
+test('bitcoin headers transaction', async function(t) {
+  let btcd = t.context.bitcoind
+  t.is(2, 2)
+  await btcd.rpc.getNetworkInfo()
 })
