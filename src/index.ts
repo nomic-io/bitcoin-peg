@@ -27,7 +27,7 @@ const MIN_WITHDRAWAL = 2500 // in satoshis
 
 const MAX_HEADERS = 4032
 
-let bitcoinPeg = function(initialHeader, coinName, chainOpts = {}) {
+let bitcoinPeg: any = function(initialHeader, coinName, chainOpts = {}) {
   if (!initialHeader) {
     throw Error('"initialHeader" argument is required')
   }
@@ -35,7 +35,6 @@ let bitcoinPeg = function(initialHeader, coinName, chainOpts = {}) {
     throw Error('"coinName" argument is required')
   }
   // TODO: use nested routing for different tx types
-
   function initializer(state) {
     // bitcoin blockchain headers (so we can SPV-verify txs)
     state.chain = [initialHeader]
@@ -345,7 +344,7 @@ let bitcoinPeg = function(initialHeader, coinName, chainOpts = {}) {
   }
 }
 
-bitcoinPeg.prototype.coinsHandler = function coinsHandler(routeName: string) {
+bitcoinPeg.coinsHandler = function coinsHandler(routeName: string) {
   // handle withdrawals
   return {
     onOutput({ amount, script }, state, context) {
