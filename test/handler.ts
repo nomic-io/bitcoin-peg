@@ -5,15 +5,15 @@ import * as coins from 'coins'
 import lotion = require('lotion-mock')
 import createBitcoind = require('bitcoind')
 import { tmpdir } from 'os'
-import { mkdirSync } from 'fs'
+let { mkdirSync, removeSync } = require('fs-extra')
 import { join } from 'path'
 import getPort = require('get-port')
 import rimraf = require('rimraf')
 
 async function makeBitcoind() {
-  let dataPath = join(tmpdir(), Math.random().toString(36))
-  mkdirSync(dataPath)
   let rpcport = await getPort()
+  let dataPath = join(tmpdir(), Math.random().toString(36) + rpcport)
+  mkdirSync(dataPath)
   let bitcoind = createBitcoind({
     rpcport,
     listen: 0,
@@ -64,21 +64,19 @@ test.beforeEach(async function(t) {
 
 test.afterEach.always(async function(t) {
   t.context.bitcoind.node.kill()
-  rimraf.sync(t.context.bitcoind.dataPath)
+  removeSync(t.context.bitcoind.dataPath)
 })
 
 test('bitcoin headers transaction', async function(t) {
   let btcd = t.context.bitcoind
   let app = t.context.lotionApp
 
-  let generatedBlockHashes = await btcd.rpc.generate(101)
-  let bestHash = await btcd.rpc.getBestBlockHash()
-  let bestBlock = await btcd.rpc.getBlock(bestHash)
-  let genesisHash = await btcd.rpc.getBlockHash(0)
-  let genesisHeader = await btcd.rpc.getBlockHeader(genesisHash)
+  let generatedBlockHashes = await btcd.rpc.generate(102)
   let secondHeader = await btcd.rpc.getBlockHeader(generatedBlockHashes[0])
   let thirdHeader = await btcd.rpc.getBlockHeader(generatedBlockHashes[1])
   let fourthHeader = await btcd.rpc.getBlockHeader(generatedBlockHashes[2])
+  let unspent = await btcd.rpc.listUnspent()
+  console.log(unspent)
 
   t.is(app.state.bitcoin.chain.length, 1)
   let headersTx = {
@@ -100,6 +98,13 @@ test('bitcoin headers transaction', async function(t) {
     headers: [thirdHeader, fourthHeader].map(formatHeader)
   })
   t.is(app.state.bitcoin.chain.length, 4)
+})
+
+test('bitcoin deposit transactions', async function(t) {
+  let btcd = t.context.bitcoind
+  let app = t.context.lotionApp
+
+  t.true(true)
 })
 
 function formatHeader(header) {
