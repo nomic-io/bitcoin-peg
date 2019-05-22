@@ -1,6 +1,6 @@
 import * as bitcoinPeg from '../src/index'
 import anyTest, { TestInterface } from 'ava'
-let test = anyTest as TestInterface<{ bitcoind: any }>
+let test = anyTest as TestInterface<{ bitcoind: any; lotionApp: any }>
 import * as coins from 'coins'
 import lotion = require('lotion-mock')
 import createBitcoind = require('bitcoind')
@@ -23,56 +23,60 @@ async function makeBitcoind() {
     txindex: 1
   })
   await bitcoind.started()
-  return { rpc: bitcoind.rpc, port: rpcport, node: bitcoind }
+  return { rpc: bitcoind.rpc, port: rpcport, node: bitcoind, dataPath }
+}
+function makeLotionApp(trustedBtcHeader) {
+  let trustedHeader = {
+    version: trustedBtcHeader.version,
+    merkleRoot: Buffer.from(trustedBtcHeader.merkleroot, 'hex'),
+    timestamp: trustedBtcHeader.time,
+    bits: trustedBtcHeader.bits, // check on whether this is the right base / type
+    nonce: trustedBtcHeader.nonce,
+    height: trustedBtcHeader.height
+  }
+  let app = lotion({
+    initialState: {}
+  })
+
+  app.use('bitcoin', bitcoinPeg(trustedHeader, 'mycoin'))
+
+  app.use(
+    'mycoin',
+    coins({
+      initialBalances: {},
+      handlers: {
+        bitcoin: bitcoinPeg.coinsHandler('bitcoin')
+      }
+    })
+  )
+
+  app.start()
+  return app
 }
 
 test.beforeEach(async function(t) {
   let btcd = await makeBitcoind()
   t.context.bitcoind = btcd
+
+  await btcd.rpc.generate(1)
+  let genesisHash = await btcd.rpc.getBlockHash(0)
+  let genesisBlock = await btcd.rpc.getBlock(genesisHash)
+
+  t.context.lotionApp = makeLotionApp(genesisBlock)
 })
 
 test.afterEach.always(async function(t) {
   t.context.bitcoind.node.kill()
 })
 
-let trustedHeader = {
-  version: 1073676288,
-  prevHash: Buffer.from(
-    '08d61fcf532a044364f0648a41a55bba405d5aa0bf6f415d8402000000000000',
-    'hex'
-  ),
-  merkleRoot: Buffer.from(
-    'a4fb1664d00ae4448dbdf8f99f1a78f7c5bb8036fd69d6f34aed5ee62386f65c',
-    'hex'
-  ),
-  timestamp: 1556877853,
-  bits: 436373240,
-  nonce: 388744679,
-  height: 1514016
-}
-
-let app = lotion({
-  initialState: {}
-})
-
-app.use('bitcoin', bitcoinPeg(trustedHeader, 'mycoin'))
-
-app.use(
-  'mycoin',
-  coins({
-    initialBalances: {},
-    handlers: {
-      bitcoin: bitcoinPeg.coinsHandler('bitcoin')
-    }
-  })
-)
-
-app.start()
-
-/**
- * Set up local bitcoin fullnode
- */
-
 test('bitcoin headers transaction', async function(t) {
   let btcd = t.context.bitcoind
+  let netInfo = await btcd.rpc.getNetworkInfo()
+  console.log(netInfo)
+  let genesisHash = await btcd.rpc.getBlockHash(0)
+  console.log(genesisHash)
+  let genesisBlock = await btcd.rpc.getBlock(genesisHash)
+  console.log(genesisBlock)
+
+  t.true(true)
 })
