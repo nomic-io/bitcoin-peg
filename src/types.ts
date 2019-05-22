@@ -5,6 +5,10 @@ export interface ValidatorMap {
   [index: string]: number
 }
 
+/**
+ * Maps validator public key (base64) to signatory public key (buffer)
+ */
+
 export interface SignatoryMap {
   [index: string]: Buffer
 }
