@@ -3,6 +3,7 @@ import * as deposit from '../src/deposit'
 import anyTest, { TestInterface } from 'ava'
 let test = anyTest as TestInterface<{
   bitcoind: any
+  spvNode: any
   lotionApp: any
   lightClient: any
 }>
@@ -124,6 +125,9 @@ test.beforeEach(async function(t) {
     return { check_tx: {}, deliver_tx: {}, height: '42' }
   }
 
+  let spvNode = await SPVNode(btcd)
+
+  t.context.spvNode = spvNode
   t.context.lightClient = lc
 })
 
@@ -179,6 +183,7 @@ test('bitcoin header and deposit transactions', async function(t) {
   let btcd = t.context.bitcoind
   let app = t.context.lotionApp
   let lc = t.context.lightClient
+  let spvClient = t.context.spvNode
 
   let generatedBlockHashes = await btcd.rpc.generate(102)
   let secondHeader = await btcd.rpc.getBlockHeader(generatedBlockHashes[0])
