@@ -29,13 +29,10 @@ export async function relayHeaders(pegClient, opts: any = {}) {
     allowMinDifficultyBlocks: true,
     ...chainOpts
   })
-
   // connect to bitcoin peers
   let peers = PeerGroup(params.net, netOpts) // TODO: configure
   peers.connect()
   await waitForPeers(peers)
-
-  // catch up chain
   await download(chain, peers)
   peers.close()
 
@@ -83,14 +80,13 @@ export async function relayHeaders(pegClient, opts: any = {}) {
 
 // fetches a bitcoin block, and relays the relevant transactions in it (plus merkle proof)
 // to the peg chain
-export async function relayDeposits(pegClient, opts: any = {}) {
+export async function relayDeposits(pegClient, spvClient, opts: any = {}) {
   opts.chainOpts = Object.assign({}, opts.chainOpts, {
     store: await pegClient.state.bitcoin.chain,
     indexed: true,
     // TODO: disable for mainnet
     allowMinDifficultyBlocks: true
   })
-
   await relayHeaders(pegClient, Object.assign({}, opts, { tries: 3 }))
 
   let node = SPVNode({
@@ -105,6 +101,9 @@ export async function relayDeposits(pegClient, opts: any = {}) {
   // get info about signatory set
   let validators = convertValidatorsToLotion(pegClient.validators)
   let signatoryKeys = await pegClient.state.bitcoin.signatoryKeys
+  if (Object.keys(signatoryKeys).length === 0) {
+    throw new Error('No validators have committed to a signatory key yet')
+  }
   let p2ss = reserve.createOutput(validators, signatoryKeys)
   let p2ssHash = bitcoin.payments.p2wsh({
     output: p2ss,
@@ -115,9 +114,11 @@ export async function relayDeposits(pegClient, opts: any = {}) {
 
   node.filter(p2ssHash)
   node.start()
+  await waitForPeers(node.peers)
 
   // scan for deposit txs, get list of blocks which have at least 1
   let blockHashes = []
+
   await node.scan(20, (tx, header) => {
     // skip if already relayed to chain
     let txHashBase64 = getTxHash(tx).toString('base64')
@@ -132,7 +133,6 @@ export async function relayDeposits(pegClient, opts: any = {}) {
       blockHashes.push(blockHash)
     }
   })
-
   // fetch entire blocks so we can build proofs
   let blocks: any = await new Promise((resolve, reject) => {
     // TODO: filter so we don't have to download whole blocks
@@ -291,13 +291,19 @@ function getSignatures(signatures, index) {
 function waitForPeers(peers) {
   return new Promise(resolve => {
     function onPeer(peer) {
-      let isLocalhost = peer.socket.remoteAddress === '127.0.0.1'
-      if (!isLocalhost && peers.peers.length < 4) {
-        return
-      }
+      // let isLocalhost = peer.socket.remoteAddress === '127.0.0.1'
+      // if (!isLocalhost && peers.peers.length < 4) {
+      //   return
+      // }
       peers.removeListener('peer', onPeer)
       resolve()
     }
     peers.on('peer', onPeer)
+  })
+}
+
+function delay(ms = 1000) {
+  return new Promise(resolve => {
+    setTimeout(resolve, ms)
   })
 }

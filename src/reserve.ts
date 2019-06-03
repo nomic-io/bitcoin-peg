@@ -119,7 +119,11 @@ export function getSignatorySet(validators: ValidatorMap) {
     .slice(0, MAX_SIGNATORIES)
 }
 
-export function buildOutgoingTx(signingTx, validators, signatoryKeys) {
+export function buildOutgoingTx(
+  signingTx,
+  validators: ValidatorMap,
+  signatoryKeys: SignatoryMap
+) {
   let { inputs, outputs } = signingTx
 
   let tx = new Transaction()

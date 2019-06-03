@@ -4,7 +4,7 @@ import { createHash } from 'crypto'
 import ed = require('ed25519-supercop')
 import secp = require('secp256k1')
 import * as bitcoin from 'bitcoinjs-lib'
-import { ValidatorKey } from './types'
+import { ValidatorKey, ValidatorMap } from './types'
 import {
   getSignatorySet,
   buildOutgoingTx,
@@ -46,6 +46,39 @@ export async function commitPubkey(
       signature
     })
   )
+}
+
+export function buildSignatoryCommitmentTx(
+  validators: ValidatorMap,
+  privValidator: ValidatorKey,
+  signatoryPub: Buffer
+) {
+  if (!secp.publicKeyVerify(signatoryPub)) {
+    throw Error('Invalid signatory public key')
+  }
+
+  // locate our validator key in validators array
+  let signatorySet = getSignatorySet(validators)
+  let signatoryIndex
+  for (let i = 0; i < signatorySet.length; i++) {
+    let signatory = signatorySet[i]
+    if (signatory.validatorKey === privValidator.pub_key.value) {
+      signatoryIndex = i
+      break
+    }
+  }
+  if (signatoryIndex == null) {
+    throw Error('Given validator key not found in validator set')
+  }
+  console.log(signatoryPub)
+  let signature = ed25519Sign(privValidator, signatoryPub)
+
+  return {
+    type: 'bitcoin',
+    signatoryIndex,
+    signatoryKey: signatoryPub,
+    signature
+  }
 }
 
 export async function signDisbursal(client, signatoryPriv) {
@@ -102,7 +135,7 @@ function sha512(data) {
     .digest()
 }
 
-function ed25519Sign(privValidator, message) {
+function ed25519Sign(privValidator: ValidatorKey, message) {
   if (privValidator.priv_key.type !== 'tendermint/PrivKeyEd25519') {
     throw Error('Expected privkey type "tendermint/PrivKeyEd25519"')
   }
