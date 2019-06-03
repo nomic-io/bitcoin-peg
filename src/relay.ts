@@ -15,7 +15,7 @@ const reserve = require('./reserve.js')
 const { getTxHash, getBlockHash } = require('bitcoin-net/src/utils.js')
 
 // fetches bitcoin headers and relays any unprocessed ones to the peg chain
-export async function relayHeaders(pegClient, opts: any = {}) {
+export async function relayHeaders(pegClient, spvClient, opts: any = {}) {
   let tries = opts.tries != null ? opts.tries : 1
   let netOpts = opts.netOpts
   let chainOpts = opts.chainOpts
@@ -30,11 +30,9 @@ export async function relayHeaders(pegClient, opts: any = {}) {
     ...chainOpts
   })
   // connect to bitcoin peers
-  let peers = PeerGroup(params.net, netOpts) // TODO: configure
-  peers.connect()
-  await waitForPeers(peers)
-  await download(chain, peers)
-  peers.close()
+  // let peers = PeerGroup(params.net, netOpts) // TODO: configure
+
+  await download(chain, spvClient.peers)
 
   let chainState2 = await pegClient.state.bitcoin.chain
   let tip = chainState2[chainState2.length - 1]
