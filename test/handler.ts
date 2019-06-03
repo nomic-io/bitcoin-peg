@@ -234,13 +234,8 @@ test('bitcoin header and deposit transactions', async function(t) {
   let depositTxidHex = await btcd.rpc.sendRawTransaction(signedDepositTx.hex)
   let depositTxid = Buffer.from(depositTxidHex, 'hex')
   let [blockHash] = await btcd.rpc.generate(1)
-  let relayHeaderResult = await relay.relayHeaders(lc, {
-    netOpts: { numPeers: 1 },
-    chainOpts: {
-      noRetargeting: true
-    },
-    params
-  })
+
+  let relayHeaderResult = await relay.relayHeaders(lc, spvClient)
 
   t.is(app.state.bitcoin.chain.length, 104)
 
