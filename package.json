@@ -15,7 +15,8 @@
     "ed25519-supercop": "^1.2.0",
     "secp256k1": "^3.5.2",
     "supercop.js": "^2.0.1",
-    "webcoin-bitcoin-testnet": "^1.1.1"
+    "webcoin-bitcoin-testnet": "1.1.2",
+    "webcoin-regtest": "0.0.1"
   },
   "devDependencies": {
     "ava": "^1.1.0",
@@ -25,6 +26,7 @@
     "coins": "^4.2.1",
     "depcheck": "^0.6.11",
     "deterministic-json": "^1.0.5",
+    "fs-extra": "8.0.1",
     "get-port": "5.0.0",
     "lotion": "0.4.26",
     "lotion-connect": "0.1.22",
