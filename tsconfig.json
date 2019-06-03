@@ -6,5 +6,5 @@
     "target": "es5",
     "lib": ["esnext"]
   },
-  "include": ["src/"]
+  "include": ["src/", "test/"]
 }
