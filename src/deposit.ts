@@ -4,12 +4,12 @@ import { createOutput } from './reserve'
 import { ValidatorMap, SignatoryMap } from './types'
 import * as bitcoin from 'bitcoinjs-lib'
 
-export function createTx(
+export function createBitcoinTx(
   validators: ValidatorMap,
   signatoryKeys: SignatoryMap,
   utxos: bitcoin.TxOutput[],
   destAddress: Buffer
-) {
+): bitcoin.Transaction {
   let tx = new bitcoin.Transaction()
 
   // add the utxos as inputs
@@ -28,7 +28,12 @@ export function createTx(
 
   // output that pays to the signatory set
   let depositOutput = createOutput(validators, signatoryKeys)
-  tx.addOutput(depositOutput, amount)
+  console.log(depositOutput)
+  try {
+    tx.addOutput(depositOutput, amount)
+  } catch (e) {
+    console.log(e.stack)
+  }
 
   // output that commits to a destination address on the peg chain
   let addressOutput = bitcoin.payments.embed({
@@ -38,4 +43,9 @@ export function createTx(
   tx.addOutput(addressOutput, 0)
 
   return tx
+}
+
+interface LotionDepositTx {}
+export function createLotionTx(signedBtcTx): LotionDepositTx {
+  return {}
 }
