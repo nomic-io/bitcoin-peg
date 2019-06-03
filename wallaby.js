@@ -2,7 +2,10 @@ module.exports = function(wallaby) {
   return {
     env: {
       type: 'node',
-      runner: 'node'
+      runner: 'node',
+      params: {
+        env: 'DEBUG=bitcoin*'
+      }
     },
     files: ['src/*.ts'],
     tests: ['test/*.ts'],
