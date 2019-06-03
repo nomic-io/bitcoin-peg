@@ -1,5 +1,9 @@
 import test from 'ava'
-import { getVotingPowerThreshold, createWitnessScript } from '../src/reserve'
+import {
+  getVotingPowerThreshold,
+  createWitnessScript,
+  buildOutgoingTx
+} from '../src/reserve'
 import * as seed from 'random-bytes-seed'
 let randomBytes = seed('seed')
 
