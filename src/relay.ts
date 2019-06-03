@@ -87,16 +87,12 @@ export async function relayDeposits(pegClient, spvClient, opts: any = {}) {
     // TODO: disable for mainnet
     allowMinDifficultyBlocks: true
   })
-  await relayHeaders(pegClient, Object.assign({}, opts, { tries: 3 }))
 
-  let node = SPVNode({
-    network: 'testnet', // TODO: configure this
-    netOpts: opts.netOpts,
-    chainOpts: opts.chainOpts
-  })
-  node.on('error', err => {
-    pegClient.emit('error', err)
-  })
+  await relayHeaders(
+    pegClient,
+    spvClient,
+    Object.assign({}, opts, { tries: 3 })
+  )
 
   // get info about signatory set
   let validators = convertValidatorsToLotion(pegClient.validators)
@@ -107,19 +103,17 @@ export async function relayDeposits(pegClient, spvClient, opts: any = {}) {
   let p2ss = reserve.createOutput(validators, signatoryKeys)
   let p2ssHash = bitcoin.payments.p2wsh({
     output: p2ss,
-    network: node.bitcoinJsNetwork
+    network: spvClient.bitcoinJsNetwork
   }).hash
 
   let processedTxs = await pegClient.state.bitcoin.processedTxs
 
-  node.filter(p2ssHash)
-  node.start()
-  await waitForPeers(node.peers)
+  spvClient.filter(p2ssHash)
 
   // scan for deposit txs, get list of blocks which have at least 1
   let blockHashes = []
 
-  await node.scan(20, (tx, header) => {
+  await spvClient.scan(20, (tx, header) => {
     // skip if already relayed to chain
     let txHashBase64 = getTxHash(tx).toString('base64')
     if (processedTxs[txHashBase64]) return
@@ -136,7 +130,7 @@ export async function relayDeposits(pegClient, spvClient, opts: any = {}) {
   // fetch entire blocks so we can build proofs
   let blocks: any = await new Promise((resolve, reject) => {
     // TODO: filter so we don't have to download whole blocks
-    node.peers.getBlocks(blockHashes, (err, blocks) => {
+    spvClient.peers.getBlocks(blockHashes, (err, blocks) => {
       if (err) return reject(err)
       resolve(blocks)
     })
@@ -144,11 +138,11 @@ export async function relayDeposits(pegClient, spvClient, opts: any = {}) {
   // add height property to blocks
   for (let block of blocks) {
     let hash = getBlockHash(block.header)
-    let header = node.chain.getByHash(hash)
+    let header = spvClient.chain.getByHash(hash)
     block.header.height = header.height
   }
 
-  node.close()
+  spvClient.close()
 
   // submit a merkle proof tx to chain for each block, and ensure it got accepted
   let relayJobs = blocks.map(block => relayBlock(pegClient, block, p2ss))
