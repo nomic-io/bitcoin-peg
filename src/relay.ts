@@ -78,7 +78,11 @@ export async function relayHeaders(pegClient, spvClient, opts: any = {}) {
 
 // fetches a bitcoin block, and relays the relevant transactions in it (plus merkle proof)
 // to the peg chain
-export async function relayDeposits(pegClient, spvClient, opts: any = {}) {
+export async function relayDeposits(
+  pegClient,
+  spvClient,
+  opts: any = {}
+): Promise<string[]> {
   opts.chainOpts = Object.assign({}, opts.chainOpts, {
     store: await pegClient.state.bitcoin.chain,
     indexed: true,
@@ -86,11 +90,7 @@ export async function relayDeposits(pegClient, spvClient, opts: any = {}) {
     allowMinDifficultyBlocks: true
   })
 
-  await relayHeaders(
-    pegClient,
-    spvClient,
-    Object.assign({}, opts, { tries: 3 })
-  )
+  // await relayHeaders(pegClient, spvClient)
 
   // get info about signatory set
   let validators = convertValidatorsToLotion(pegClient.validators)
@@ -110,7 +110,6 @@ export async function relayDeposits(pegClient, spvClient, opts: any = {}) {
 
   // scan for deposit txs, get list of blocks which have at least 1
   let blockHashes = []
-
   await spvClient.scan(20, (tx, header) => {
     // skip if already relayed to chain
     let txHashBase64 = getTxHash(tx).toString('base64')
@@ -125,6 +124,7 @@ export async function relayDeposits(pegClient, spvClient, opts: any = {}) {
       blockHashes.push(blockHash)
     }
   })
+
   // fetch entire blocks so we can build proofs
   let blocks: any = await new Promise((resolve, reject) => {
     // TODO: filter so we don't have to download whole blocks
@@ -140,97 +140,94 @@ export async function relayDeposits(pegClient, spvClient, opts: any = {}) {
     block.header.height = header.height
   }
 
-  spvClient.close()
-
   // submit a merkle proof tx to chain for each block, and ensure it got accepted
   let relayJobs = blocks.map(block => relayBlock(pegClient, block, p2ss))
   let txids = await Promise.all(relayJobs)
   return [].concat(...txids)
 }
 
-async function relayBlock(pegClient, block, p2ss) {
+async function relayBlock(pegClient, block, p2ss): Promise<string[]> {
   // relay any unprocessed txs (max of 4 tries)
-  for (let i = 0; i < 4; i++) {
-    let processedTxs = await pegClient.state.bitcoin.processedTxs
+  let processedTxs = await pegClient.state.bitcoin.processedTxs
 
-    // get txs to be relayed
-    let hashes = [] // all hashes in block (so we can generate merkle proof)
-    let includeHashes = [] // hashes to be included in proof
-    let includeTxs = [] // txs to be included in proof
-    let relayedHashes = [] // hashes already processed on the peg chain
-    for (let tx of block.transactions) {
-      let txid = getTxHash(tx)
-      hashes.push(txid)
+  // get txs to be relayed
+  let hashes = [] // all hashes in block (so we can generate merkle proof)
+  let includeHashes = [] // hashes to be included in proof
+  let includeTxs = [] // txs to be included in proof
+  let relayedHashes = [] // hashes already processed on the peg chain
+  for (let tx of block.transactions) {
+    let txid = getTxHash(tx)
+    hashes.push(txid)
 
-      // filter out txs that aren't valid deposits
-      if (!isDepositTx(tx, p2ss)) continue
+    // filter out txs that aren't valid deposits
+    if (!isDepositTx(tx, p2ss)) continue
 
-      // filter out txs that were already processed
-      let txidBase64 = txid.toString('base64')
-      if (processedTxs[txidBase64]) {
-        relayedHashes.push(txid)
-        continue
-      }
-
-      includeHashes.push(txid)
-      includeTxs.push(tx)
+    // filter out txs that were already processed
+    let txidBase64 = txid.toString('base64')
+    if (processedTxs[txidBase64]) {
+      relayedHashes.push(txid)
+      continue
     }
 
-    // no txs left to process (success)
-    // (either someone else relayed them, or there weren't any in the first place)
-    if (includeHashes.length === 0) {
-      return relayedHashes
-    }
-
-    let proof = buildMerkleProof({ hashes, include: includeHashes })
-    // nodes verify against merkleRoot of stored header, so we don't need the `merkleProof` field
-    delete proof.merkleRoot
-
-    // we ignore response since it might have already been relayed by someone else
-    let tx = {
-      type: 'bitcoin',
-      height: block.header.height,
-      proof,
-      transactions: includeTxs.map(tx => encodeTx(tx))
-    }
-    let res = await pegClient.send(tx)
-    debug('sent deposit relay transaction: ', tx, res)
-
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    includeHashes.push(txid)
+    includeTxs.push(tx)
   }
 
-  throw Error('Failed to fetch and relay block')
+  // no txs left to process (success)
+  // (either someone else relayed them, or there weren't any in the first place)
+  if (includeHashes.length === 0) {
+    return relayedHashes
+  }
+
+  let proof = buildMerkleProof({ hashes, include: includeHashes })
+  // nodes verify against merkleRoot of stored header, so we don't need the `merkleProof` field
+  delete proof.merkleRoot
+
+  // we ignore response since it might have already been relayed by someone else
+  let tx = {
+    type: 'bitcoin',
+    height: block.header.height,
+    proof,
+    transactions: includeTxs.map(tx => encodeTx(tx))
+  }
+  let res = await pegClient.send(tx)
+  console.log(res)
+  debug('sent deposit relay transaction: ', tx, res)
+  return relayedHashes
+  // await new Promise(resolve => setTimeout(resolve, 1000))
+
+  // throw Error('Failed to fetch and relay block')
 }
 
 // calls `relayDeposits` and ensures given txid was relayed
-export async function relayDeposit(pegClient, txid) {
-  if (!Buffer.isBuffer(txid)) {
-    throw Error('Must specify txid')
-  }
-  let txidBase64 = txid.toString('base64')
+// export async function relayDeposit(pegClient, spvClient, txid) {
+//   if (!Buffer.isBuffer(txid)) {
+//     throw Error('Must specify txid')
+//   }
+//   let txidBase64 = txid.toString('base64')
 
-  // relay deposit txs in latest bitcoin block
-  let txids = await relayDeposits(pegClient)
+//   // relay deposit txs in latest bitcoin block
+//   let txids = await relayDeposits(pegClient, spvClient)
 
-  // check to see if given txid was relayed in this block
-  let txidsBase64 = txids.map(txid => txid.toString('base64'))
-  if (txidsBase64.includes(txidBase64)) {
-    // success, txid was relayed
-    return
-  }
+//   // check to see if given txid was relayed in this block
+//   let txidsBase64 = txids.map(txid => txid.toString('base64'))
+//   if (txidsBase64.includes(txidBase64)) {
+//     // success, txid was relayed
+//     return
+//   }
 
-  // maybe txid was in an older block? check if it was relayed
-  let processedTxs = await pegClient.state.bitcoin.processedTxs
-  if (processedTxs[txidBase64]) {
-    // success, txid was relayed
-    return
-  }
+//   // maybe txid was in an older block? check if it was relayed
+//   let processedTxs = await pegClient.state.bitcoin.processedTxs
+//   if (processedTxs[txidBase64]) {
+//     // success, txid was relayed
+//     return
+//   }
 
-  // TODO: instead of erroring here,
-  //       1. scan for confirmation. if deposit not confirmed then error
-  //       2. relay
-  throw Error('Deposit transaction was not relayed')
-}
+// TODO: instead of erroring here,
+//       1. scan for confirmation. if deposit not confirmed then error
+//       2. relay
+// throw Error('Deposit transaction was not relayed')
+// }
 
 // TODO: build the 3 separate transactions as outlined in the design document
 export function buildDisbursalTransaction(signedTx, validators, signatoryKeys) {
@@ -277,25 +274,5 @@ function getSignatures(signatures, index) {
   return signatures.map(sigs => {
     if (sigs == null) return null
     return sigs[index].toString('hex') + '01' // SIGHASH_ALL
-  })
-}
-
-function waitForPeers(peers) {
-  return new Promise(resolve => {
-    function onPeer(peer) {
-      // let isLocalhost = peer.socket.remoteAddress === '127.0.0.1'
-      // if (!isLocalhost && peers.peers.length < 4) {
-      //   return
-      // }
-      peers.removeListener('peer', onPeer)
-      resolve()
-    }
-    peers.on('peer', onPeer)
-  })
-}
-
-function delay(ms = 1000) {
-  return new Promise(resolve => {
-    setTimeout(resolve, ms)
   })
 }

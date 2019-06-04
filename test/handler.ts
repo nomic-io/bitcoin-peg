@@ -14,7 +14,7 @@ import { tmpdir } from 'os'
 let { mkdirSync, removeSync } = require('fs-extra')
 import { join } from 'path'
 import getPort = require('get-port')
-import { buildSignatoryCommitmentTx } from '../src/signatory'
+import { buildSignatoryCommitmentTx, commitPubkey } from '../src/signatory'
 import { KeyType } from '../src/types'
 import * as seed from 'random-bytes-seed'
 import * as relay from '../src/relay'
@@ -62,7 +62,7 @@ async function makeBitcoind() {
     deprecatedrpc: 'signrawtransaction',
     txindex: 1
   })
-  await bitcoind.started()
+  await bitcoind.started() //?.
   let netinfo = await bitcoind.rpc.getNetworkInfo()
   console.log(netinfo)
   return { rpc: bitcoind.rpc, port, rpcport, node: bitcoind, dataPath }
@@ -103,7 +103,7 @@ function monkeyPatchBitcoinNetParams(port) {
 }
 
 test.beforeEach(async function(t) {
-  let btcd = await makeBitcoind()
+  let btcd = await makeBitcoind() //?.
   t.context.bitcoind = btcd
   monkeyPatchBitcoinNetParams(btcd.port)
   let genesisHash = await btcd.rpc.getBlockHash(0)
@@ -136,56 +136,13 @@ test.afterEach.always(async function(t) {
   removeSync(t.context.bitcoind.dataPath)
 })
 
-// test('connect spv client to local regtest node', async function(t) {
-//   function delay(ms = 1000) {
-//     return new Promise(resolve => setTimeout(resolve, ms))
-//   }
-//   let btcd = t.context.bitcoind
-//   let app = t.context.lotionApp
-//   let generatedBlockHashes = await btcd.rpc.generate(103)
-//   console.log(generatedBlockHashes[0])
-//   let unspent = await btcd.rpc.listUnspent()
-//   console.log(unspent)
-
-//   let regtestParams = getRegtestParams(btcd.port)
-//   console.log(regtestParams)
-//   let node = SPVNode({
-//     network: 'regtest',
-//     params: getRegtestParams(btcd.port)
-//   })
-//   let filter = Buffer.from(unspent[0].txid, 'hex')
-//   console.log(filter)
-//   node.filter(filter)
-//   node.start()
-//   node.peers.connect(function() {
-//     console.log('connected')
-//     console.log(node.peers.peers[0])
-//   })
-//   await waitForPeer(node.peers)
-//   console.log(node.chain)
-//   await delay()
-//   console.log(node.chain)
-
-//   node.scan(2, function(tx, header) {
-//     console.log('got header')
-//     console.log(header)
-//   })
-//   await delay(2000)
-//   t.true(true)
-//   function waitForPeer(peers) {
-//     return new Promise(resolve => {
-//       peers.once('peer', resolve)
-//     })
-//   }
-// })
-
 test('bitcoin header and deposit transactions', async function(t) {
   let btcd = t.context.bitcoind
   let app = t.context.lotionApp
   let lc = t.context.lightClient
   let spvClient = t.context.spvNode
 
-  let generatedBlockHashes = await btcd.rpc.generate(102)
+  let generatedBlockHashes = await btcd.rpc.generate(102) //?.
   let secondHeader = await btcd.rpc.getBlockHeader(generatedBlockHashes[0])
   let thirdHeader = await btcd.rpc.getBlockHeader(generatedBlockHashes[1])
   let fourthHeader = await btcd.rpc.getBlockHeader(generatedBlockHashes[2])
@@ -195,7 +152,7 @@ test('bitcoin header and deposit transactions', async function(t) {
     type: 'bitcoin',
     headers: [secondHeader].map(formatHeader)
   }
-  app.run(headersTx)
+  console.log(app.run(headersTx))
   t.is(app.state.bitcoin.chain.length, 2)
 
   let errs = app.run({
@@ -219,11 +176,18 @@ test('bitcoin header and deposit transactions', async function(t) {
     validatorKey,
     signatoryPub
   )
+
+  let result = await commitPubkey(
+    t.context.lightClient,
+    validatorKey,
+    signatoryPub
+  )
+  t.is(result.height, '42')
   console.log(app.run(signatoryCommitmentTx))
 
   let rpcUtxos = await btcd.rpc.listUnspent()
   let utxos = rpcUtxos.map(formatUtxo)
-  let destinationCoinsAddress = Buffer.alloc(32)
+  let destinationCoinsAddress = Buffer.alloc(20)
   let rawDepositTx = deposit.createBitcoinTx(
     lotionValidators,
     signatories,
@@ -239,14 +203,15 @@ test('bitcoin header and deposit transactions', async function(t) {
 
   t.is(app.state.bitcoin.chain.length, 104)
 
-  // TODO: webcoin node connected to a regtest full node
-  // let relayDepositResult = await relay.relayDeposits(lc, {
-  //   netOpts: { numPeers: 1 },
-  //   chainOpts: {
-  //     noRetargeting: true
-  //   },
-  //   params
-  // })
+  let relayDepositResult = await relay.relayDeposits(lc, spvClient) //?.
+  let mycoinState = await lc.state.mycoin
+  console.log(mycoinState)
+  t.is(mycoinState.accounts['111111111111111111117K4nzc'].balance, 9999990000)
+
+  /**
+   * Now test withdrawals
+   */
+
   t.true(true)
 })
 
