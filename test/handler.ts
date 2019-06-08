@@ -14,7 +14,11 @@ import { tmpdir } from 'os'
 let { mkdirSync, removeSync } = require('fs-extra')
 import { join } from 'path'
 import getPort = require('get-port')
-import { buildSignatoryCommitmentTx, commitPubkey } from '../src/signatory'
+import {
+  buildSignatoryCommitmentTx,
+  commitPubkey,
+  signDisbursal
+} from '../src/signatory'
 import { KeyType } from '../src/types'
 import * as seed from 'random-bytes-seed'
 import * as relay from '../src/relay'
@@ -22,6 +26,7 @@ let { genValidator } = require('tendermint-node')
 import ed = require('ed25519-supercop')
 import secp = require('secp256k1')
 let randomBytes = seed('seed')
+let base58 = require('bs58check')
 import { ValidatorMap, ValidatorKey, SignatoryMap } from '../src/types'
 let SPVNode = require('webcoin-regtest')
 
@@ -124,6 +129,8 @@ test.beforeEach(async function(t) {
     t.context.lotionApp.run(tx)
     return { check_tx: {}, deliver_tx: {}, height: '42' }
   }
+  lc.on = function() {}
+  lc.emit = function() {}
 
   let spvNode = await SPVNode(btcd)
 
@@ -187,7 +194,9 @@ test('bitcoin header and deposit transactions', async function(t) {
 
   let rpcUtxos = await btcd.rpc.listUnspent()
   let utxos = rpcUtxos.map(formatUtxo)
-  let destinationCoinsAddress = Buffer.alloc(20)
+  let coinsPrivkey = randomBytes(32)
+  let wallet = coins.wallet(coinsPrivkey, lc, { route: 'mycoin' })
+  let destinationCoinsAddress = base58.decode(wallet.address())
   let rawDepositTx = deposit.createBitcoinTx(
     lotionValidators,
     signatories,
@@ -206,11 +215,38 @@ test('bitcoin header and deposit transactions', async function(t) {
   let relayDepositResult = await relay.relayDeposits(lc, spvClient) //?.
   let mycoinState = await lc.state.mycoin
   console.log(mycoinState)
-  t.is(mycoinState.accounts['111111111111111111117K4nzc'].balance, 9999990000)
+  t.is(
+    mycoinState.accounts[base58.encode(destinationCoinsAddress)].balance,
+    9999990000
+  )
 
   /**
    * Now test withdrawals
    */
+  let res = await wallet.send({
+    type: 'bitcoin',
+    amount: 1e8,
+    script: Buffer.from([1, 2, 3, 4])
+  })
+
+  t.is(res.height, '42')
+
+  /**
+   * Sign disbursal transaction with signatory key
+   */
+  let signedResponse = await signDisbursal(lc, signatoryKeyPair.privateKey)
+  console.log(signedResponse)
+
+  let signedTx = await lc.state.bitcoin.signedTx
+  console.log(signedTx)
+  let signatoryState = await lc.state.bitcoin.signatoryKeys
+  console.log(signatoryState)
+  let disbursalTx = relay.buildDisbursalTransaction(
+    signedTx,
+    lotionValidators,
+    signatoryState
+  )
+  console.log(disbursalTx)
 
   t.true(true)
 })
