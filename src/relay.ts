@@ -9,7 +9,8 @@ const params = require('webcoin-bitcoin-testnet')
 const encodeTx = require('bitcoin-protocol').types.transaction.encode
 const download = require('blockchain-download')
 const buildMerkleProof = require('bitcoin-merkle-proof').build
-const reserve = require('./reserve.js')
+import * as reserve from './reserve'
+import { SignatoryMap } from './types'
 
 // TODO: get this from somewhere else
 const { getTxHash, getBlockHash } = require('bitcoin-net/src/utils.js')
@@ -230,7 +231,11 @@ async function relayBlock(pegClient, block, p2ss): Promise<string[]> {
 // }
 
 // TODO: build the 3 separate transactions as outlined in the design document
-export function buildDisbursalTransaction(signedTx, validators, signatoryKeys) {
+export function buildDisbursalTransaction(
+  signedTx,
+  validators,
+  signatoryKeys: SignatoryMap
+) {
   // build tx
   let tx = reserve.buildOutgoingTx(signedTx, validators, signatoryKeys)
 
@@ -271,8 +276,11 @@ export function convertValidatorsToLotion(validators) {
 // gets the signatures for the given input index from the
 // peg network's signedTx state object as hex
 function getSignatures(signatures, index) {
-  return signatures.map(sigs => {
+  let hexSigs = []
+  for (let i = 0; i < signatures.length; i++) {
+    let sigs = signatures[i]
     if (sigs == null) return null
-    return sigs[index].toString('hex') + '01' // SIGHASH_ALL
-  })
+    hexSigs[i] = sigs[index].toString('hex') + '01' // SIGHASH_ALL
+  }
+  return hexSigs
 }
