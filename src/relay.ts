@@ -201,34 +201,34 @@ async function relayBlock(pegClient, block, p2ss): Promise<string[]> {
 }
 
 // calls `relayDeposits` and ensures given txid was relayed
-// export async function relayDeposit(pegClient, spvClient, txid) {
-//   if (!Buffer.isBuffer(txid)) {
-//     throw Error('Must specify txid')
-//   }
-//   let txidBase64 = txid.toString('base64')
+export async function relayDeposit(pegClient, spvClient, txid) {
+  if (!Buffer.isBuffer(txid)) {
+    throw Error('Must specify txid')
+  }
+  let txidBase64 = txid.toString('base64')
 
-//   // relay deposit txs in latest bitcoin block
-//   let txids = await relayDeposits(pegClient, spvClient)
+  // relay deposit txs in latest bitcoin block
+  let txids = await relayDeposits(pegClient, spvClient)
 
-//   // check to see if given txid was relayed in this block
-//   let txidsBase64 = txids.map(txid => txid.toString('base64'))
-//   if (txidsBase64.includes(txidBase64)) {
-//     // success, txid was relayed
-//     return
-//   }
+  // check to see if given txid was relayed in this block
+  let txidsBase64 = txids.map((txid: any) => txid.toString('base64'))
+  if (txidsBase64.includes(txidBase64)) {
+    // success, txid was relayed
+    return
+  }
 
-//   // maybe txid was in an older block? check if it was relayed
-//   let processedTxs = await pegClient.state.bitcoin.processedTxs
-//   if (processedTxs[txidBase64]) {
-//     // success, txid was relayed
-//     return
-//   }
+  // maybe txid was in an older block? check if it was relayed
+  let processedTxs = await pegClient.state.bitcoin.processedTxs
+  if (processedTxs[txidBase64]) {
+    // success, txid was relayed
+    return
+  }
 
-// TODO: instead of erroring here,
-//       1. scan for confirmation. if deposit not confirmed then error
-//       2. relay
-// throw Error('Deposit transaction was not relayed')
-// }
+  // TODO: instead of erroring here,
+  //       1. scan for confirmation. if deposit not confirmed then error
+  //       2. relay
+  throw Error('Deposit transaction was not relayed')
+}
 
 // TODO: build the 3 separate transactions as outlined in the design document
 export function buildDisbursalTransaction(
@@ -237,12 +237,16 @@ export function buildDisbursalTransaction(
   signatoryKeys: SignatoryMap
 ) {
   // build tx
+  console.log(signatoryKeys)
   let tx = reserve.buildOutgoingTx(signedTx, validators, signatoryKeys)
 
   // insert signatory set's signatures as p2wsh witness
   let redeemScript = reserve.createWitnessScript(validators, signatoryKeys)
   for (let i = 0; i < tx.ins.length; i++) {
     let signatures = getSignatures(signedTx.signatures, i)
+    console.log(i)
+    console.log(signedTx.signatures)
+    console.log(signatures)
     let scriptSig = reserve.createScriptSig(signatures)
     let p2wsh = bitcoin.payments.p2wsh({
       redeem: {
