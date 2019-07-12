@@ -6,15 +6,17 @@ import { ValidatorMap, SignatoryMap } from './types'
 const MAX_SIGNATORIES = 76
 const MIN_RELAY_FEE = 1000
 
-const firstSignatory = ({ pubkey, votingPower }) => `
-  ${pubkey} OP_CHECKSIG
+const firstSignatory = signatory => {
+  console.log(signatory)
+  return `
+  ${signatory.pubkey} OP_CHECKSIG
   OP_IF
-    ${uint(votingPower)}
+    ${uint(signatory.votingPower)}
   OP_ELSE
     OP_0
   OP_ENDIF
 `
-
+}
 const nthSignatory = ({ pubkey, votingPower }) => `
   OP_SWAP
     ${pubkey} OP_CHECKSIG
@@ -59,6 +61,8 @@ export function createWitnessScript(
   signatoryKeys: SignatoryMap
 ) {
   // get signatory key for each signatory
+  console.log('getting signatories')
+  console.log(validators)
   let signatories = getSignatorySet(validators)
     .map(({ validatorKey, votingPower }) => {
       let pubkeyHex
@@ -70,8 +74,10 @@ export function createWitnessScript(
     })
     .filter(s => s.pubkey != null)
 
+  console.log(signatories)
   let twoThirdsVotingPower = getVotingPowerThreshold(signatories)
 
+  console.log(signatories)
   let asm =
     firstSignatory(signatories[0]) +
     signatories
@@ -84,11 +90,13 @@ export function createWitnessScript(
 }
 
 export function createScriptSig(signatures) {
+  console.log(signatures)
   let asm = signatures
     .map(signature)
     .reverse()
     .join('\n')
 
+  console.log(asm)
   return script.fromASM(trim(asm))
 }
 

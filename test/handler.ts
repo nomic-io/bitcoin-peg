@@ -32,7 +32,6 @@ let SPVNode = require('webcoin-regtest')
 
 // this gets monkey patched in test setup:
 let params = require('webcoin-bitcoin-testnet').net
-let testnetParams = require('webcoin-bitcoin-testnet')
 
 let validatorKey: ValidatorKey = JSON.parse(genValidator()).Key
 
@@ -69,12 +68,10 @@ async function makeBitcoind() {
   })
   await bitcoind.started() //?.
   let netinfo = await bitcoind.rpc.getNetworkInfo()
-  console.log(netinfo)
   return { rpc: bitcoind.rpc, port, rpcport, node: bitcoind, dataPath }
 }
 function makeLotionApp(trustedBtcHeader) {
   let trustedHeader = formatHeader(trustedBtcHeader)
-  console.log(trustedHeader)
   let app = lotion({
     initialState: {}
   })
@@ -143,7 +140,7 @@ test.afterEach.always(async function(t) {
   removeSync(t.context.bitcoind.dataPath)
 })
 
-test('bitcoin header and deposit transactions', async function(t) {
+test.only('bitcoin header and deposit transactions', async function(t) {
   let btcd = t.context.bitcoind
   let app = t.context.lotionApp
   let lc = t.context.lightClient
@@ -159,7 +156,6 @@ test('bitcoin header and deposit transactions', async function(t) {
     type: 'bitcoin',
     headers: [secondHeader].map(formatHeader)
   }
-  console.log(app.run(headersTx))
   t.is(app.state.bitcoin.chain.length, 2)
 
   let errs = app.run({
@@ -190,7 +186,6 @@ test('bitcoin header and deposit transactions', async function(t) {
     signatoryPub
   )
   t.is(result.height, '42')
-  console.log(app.run(signatoryCommitmentTx))
 
   let rpcUtxos = await btcd.rpc.listUnspent()
   let utxos = rpcUtxos.map(formatUtxo)
@@ -214,7 +209,6 @@ test('bitcoin header and deposit transactions', async function(t) {
 
   let relayDepositResult = await relay.relayDeposits(lc, spvClient) //?.
   let mycoinState = await lc.state.mycoin
-  console.log(mycoinState)
   t.is(
     mycoinState.accounts[base58.encode(destinationCoinsAddress)].balance,
     9999990000
@@ -235,24 +229,32 @@ test('bitcoin header and deposit transactions', async function(t) {
    * Sign disbursal transaction with signatory key
    */
   let signedResponse = await signDisbursal(lc, signatoryKeyPair.privateKey)
-  console.log(signedResponse)
 
   let signedTx = await lc.state.bitcoin.signedTx
-  console.log(signedTx)
   let signatoryState = await lc.state.bitcoin.signatoryKeys
-  console.log(signatoryState)
-  let disbursalTx = relay.buildDisbursalTransaction(
+  let disbursalBtcTx = relay.buildDisbursalTransaction(
     signedTx,
     lotionValidators,
     signatoryState
   )
-  console.log(disbursalTx)
 
-  t.true(true)
+  /**
+   * Make sure coins balance decreased after withdrawal
+   */
+  mycoinState = await lc.state.mycoin
+  t.is(
+    mycoinState.accounts[base58.encode(destinationCoinsAddress)].balance,
+    9899990000
+  )
+
+  /**
+   * Make sure disbursal transaction is a valid bitcoin transaction
+   */
+  await btcd.rpc.sendRawTransaction(disbursalBtcTx.toHex())
+  t.deepEqual(await btcd.rpc.getRawMempool(), [disbursalBtcTx.getId()])
 })
 
 function formatHeader(header) {
-  console.log(header)
   return {
     height: header.height,
     version: header.version,

@@ -36,6 +36,7 @@ let bitcoinPeg: any = function(initialHeader, coinName, chainOpts = {}) {
   }
   // TODO: use nested routing for different tx types
   function initializer(state) {
+    console.log('called bitcoin peg initializer')
     // bitcoin blockchain headers (so we can SPV-verify txs)
     state.chain = [initialHeader]
 
@@ -151,6 +152,7 @@ let bitcoinPeg: any = function(initialHeader, coinName, chainOpts = {}) {
         output: bitcoinTx.outs[1].script
       }).data[0]
       if (addressHash.length !== 20) {
+        console.log(addressHash)
         throw Error('Invalid recipient address commitment output')
       }
 
@@ -353,5 +355,11 @@ bitcoinPeg.coinsHandler = function coinsHandler(routeName: string) {
     }
   }
 }
+
+import * as relay from './relay'
+bitcoinPeg.relay = relay
+
+import * as deposit from './deposit'
+bitcoinPeg.deposit = deposit
 
 export = bitcoinPeg
