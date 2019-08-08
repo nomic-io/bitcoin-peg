@@ -12,6 +12,7 @@ let { mkdirSync, removeSync } = require('fs-extra')
 let createBitcoind = require('bitcoind')
 let { tmpdir } = require('os')
 let RPCClient = require('bitcoin-core')
+let Blockchain = require('blockchain-spv')
 
 async function makeBitcoind() {
   let rpcport = await getPort()
@@ -27,29 +28,54 @@ async function makeBitcoind() {
     datadir: dataPath,
     debug: 1,
     deprecatedrpc: 'signrawtransaction',
-    txindex: 1
+    txindex: 1,
+    rpcauth:
+      'foo:e1fcea9fb59df8b0388f251984fe85$26431097d48c5b6047df8dee64f387f63835c01a2a463728ad75087d0133b8e6'
   })
   await bitcoind.started() //?.
   let rpc = new RPCClient({
     network: 'regtest',
-    port: rpcport
+    port: rpcport,
+    wallet: 'default',
+    username: 'foo',
+    password: 'j1DuzF7QRUp-iSXjgewO9T_WT1Qgrtz_XWOHCMn_O-Y='
   })
+  await rpc.createWallet('default')
   return { rpc, port, rpcport, node: bitcoind, dataPath }
 }
 
 test.beforeEach(async function(t) {
   t.context.bitcoind = await makeBitcoind()
+  let rpc = t.context.bitcoind.rpc
+
+  let genesisHash = await rpc.getBestBlockHash()
+  console.log(genesisHash)
+  let genesisHeader = await rpc.getBlockHeader(genesisHash)
+  console.log(genesisHeader)
+
   let app = lotion({
-    initialState: { headers: [] }
+    initialState: { bitcoin: { headers: [formatHeader(genesisHeader)] } }
   })
 
   app.use(function(state, tx, context) {
-    if (tx.type === 'header') {
-      state.headers.push(tx.header)
+    if (tx.type === 'headers') {
+      try {
+        let chain = new Blockchain({
+          start: state.bitcoin.headers[0],
+          store: state.bitcoin.headers,
+          allowMinDifficultyBlocks: true,
+          noRetargeting: true
+        })
+
+        chain.add(tx.headers)
+      } catch (e) {
+        console.log(e)
+      }
     }
   })
 
   app.start()
+  console.log(app.state)
   let lc = await lotion.connect(app)
   t.context.lotionLightClient = lc
 })
@@ -59,8 +85,12 @@ test.afterEach.always(async function(t) {
   removeSync(t.context.bitcoind.dataPath)
 })
 
-test.only('basic relaying', async function(t) {
+test.only('header relaying', async function(t) {
   let lc = t.context.lotionLightClient
+  let rpc = t.context.bitcoind.rpc
+  let aliceAddress = await rpc.getNewAddress()
+  let genResult = await rpc.generateToAddress(101, aliceAddress)
+
   console.log(t.context.bitcoind.rpc)
 
   let relay = new Relay({
@@ -68,6 +98,24 @@ test.only('basic relaying', async function(t) {
     lotionLightClient: lc
   })
 
-  let stepResult = await relay.step()
-  t.is(true, true)
+  t.is(await lc.state.bitcoin.headers.length, 1)
+  await relay.step()
+  t.is(await lc.state.bitcoin.headers.length, 101)
+  await rpc.generateToAddress(1, aliceAddress)
+  await relay.step()
+  t.is(await lc.state.bitcoin.headers.length, 102)
 })
+
+function formatHeader(header) {
+  return {
+    height: Number(header.height),
+    version: Number(header.version),
+    prevHash: header.previousblockhash
+      ? Buffer.from(header.previousblockhash, 'hex').reverse()
+      : Buffer.alloc(32),
+    merkleRoot: Buffer.from(header.merkleroot, 'hex').reverse(),
+    timestamp: Number(header.time),
+    bits: parseInt(header.bits, 16),
+    nonce: Number(header.nonce)
+  }
+}
