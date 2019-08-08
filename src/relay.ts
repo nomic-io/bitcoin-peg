@@ -29,17 +29,54 @@ export class Relay {
   }
   start() {}
 
+  async relayHeaders(startHeight = 0) {
+    let rpc = this.bitcoinRPC
+    let lastBlockHash = await rpc.getBestBlockHash()
+    let lastHeight = (await rpc.getBlockchainInfo()).headers
+    let lastHeader = await rpc.getBlockHeader(lastBlockHash)
+    let headers = []
+    while (lastHeight > startHeight + 1) {
+      lastHeader = await rpc.getBlockHeader(lastHeader.previousblockhash)
+
+      headers.push(formatHeader(lastHeader))
+      lastHeight--
+    }
+    headers.reverse()
+
+    await this.lotionLightClient.send({ type: 'headers', headers })
+  }
   /**
    * Process all actions required by state updates on the peg zone or Bitcoin.
    *
    * Returns a promise which resolves when all necessary actions (such as relaying deposits) have been completed.
    */
   async step() {
-    // Check for Bitcoin deposits
     let rpc = this.bitcoinRPC
     let lc = this.lotionLightClient
+    // Relay any headers not yet seen by the peg chain.
+    let pegChainHeaders = await lc.state.bitcoin.headers
+    let bestHeaderHeight = (await rpc.getBlockchainInfo()).headers
+    if (bestHeaderHeight >= pegChainHeaders.length) {
+      await this.relayHeaders(pegChainHeaders.length - 1)
+    }
+    // Check for Bitcoin deposits
+
     // Get current weighted multisig address
 
     console.log(rpc)
+  }
+}
+
+function formatHeader(header) {
+  return {
+    height: Number(header.height),
+    version: Number(header.version),
+    prevHash: header.previousblockhash
+      ? Buffer.from(header.previousblockhash, 'hex').reverse()
+      : Buffer.alloc(32),
+    merkleRoot: Buffer.from(header.merkleroot, 'hex').reverse(),
+    timestamp: Number(header.time),
+    bits: parseInt(header.bits, 16),
+    nonce: Number(header.nonce)
   }
 }
