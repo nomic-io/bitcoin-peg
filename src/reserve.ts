@@ -1,5 +1,3 @@
-'use strict'
-
 import { script, Transaction, payments, networks } from 'bitcoinjs-lib'
 import { ValidatorMap, SignatoryMap } from './types'
 
