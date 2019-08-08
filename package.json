@@ -23,7 +23,7 @@
   "devDependencies": {
     "ava": "^1.1.0",
     "bitcoin-inventory": "^1.2.2",
-    "bitcoind": "github:nomic-io/node-bitcoind#use-correct-rpc-port",
+    "bitcoind": "github:nomic-io/node-bitcoind#v0.18.0",
     "bs58check": "2.1.2",
     "coins": "^4.2.1",
     "depcheck": "^0.6.11",
