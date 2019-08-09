@@ -2,6 +2,13 @@ interface RelayOptions {
   bitcoinRPC: any
   lotionLightClient: any
   pollIntervalSeconds?: number
+  /**
+   * Optionally specify an address to watch for deposits.
+   *
+   * If this isn't explicitly provided, it will be derived
+   * from the signatory keys on the peg zone state.
+   */
+  depositAddress?: string
 }
 
 /**
@@ -19,6 +26,7 @@ export class Relay {
   private bitcoinRPC: any
   private pollIntervalSeconds: number = 10
   private lotionLightClient: any
+  private depositAddress?: string
 
   constructor(relayOpts: RelayOptions) {
     this.bitcoinRPC = relayOpts.bitcoinRPC
@@ -26,6 +34,9 @@ export class Relay {
       this.pollIntervalSeconds = relayOpts.pollIntervalSeconds
     }
     this.lotionLightClient = relayOpts.lotionLightClient
+    if (relayOpts.depositAddress) {
+      this.depositAddress = relayOpts.depositAddress
+    }
   }
   start() {}
 
