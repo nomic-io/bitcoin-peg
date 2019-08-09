@@ -34,7 +34,7 @@ export class Relay {
     let lastBlockHash = await rpc.getBestBlockHash()
     let lastHeight = (await rpc.getBlockchainInfo()).headers
     let lastHeader = await rpc.getBlockHeader(lastBlockHash)
-    let headers = []
+    let headers = [formatHeader(lastHeader)]
     while (lastHeight > startHeight + 1) {
       lastHeader = await rpc.getBlockHeader(lastHeader.previousblockhash)
 
@@ -62,8 +62,6 @@ export class Relay {
     // Check for Bitcoin deposits
 
     // Get current weighted multisig address
-
-    console.log(rpc)
   }
 }
 
