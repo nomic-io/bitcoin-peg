@@ -128,9 +128,14 @@ test.only('header and deposit relaying', async function(t) {
   let latestBlockHeaderOnPeg = pegHeaders[pegHeaders.length - 1]
   t.is(latestBlockHeaderOnPeg.timestamp, latestBtcHeader.time)
 
+  t.is(await lc.state.bitcoin._txs.length, 0)
   await rpc.sendToAddress(depositAddress, 10)
   await rpc.generateToAddress(1, aliceAddress)
   await relay.step()
+  t.is(await lc.state.bitcoin._txs.length, 1)
+  await relay.step()
+  // Double check that the deposit transaction is only relayed once:
+  t.is(await lc.state.bitcoin._txs.length, 1)
 })
 
 function formatHeader(header) {
