@@ -1,3 +1,6 @@
+import bmp = require('bitcoin-merkle-proof')
+let encodeBitcoinTx = require('bitcoin-protocol').types.transaction.encode
+
 interface RelayOptions {
   bitcoinRPC: any
   lotionLightClient: any
@@ -38,7 +41,9 @@ export class Relay {
       this.depositAddress = relayOpts.depositAddress
     }
   }
-  start() {}
+  async start() {
+    let rpc = this.bitcoinRPC
+  }
 
   async relayHeaders(startHeight = 0) {
     let rpc = this.bitcoinRPC
@@ -66,13 +71,69 @@ export class Relay {
     let lc = this.lotionLightClient
     // Relay any headers not yet seen by the peg chain.
     let pegChainHeaders = await lc.state.bitcoin.headers
+    let pegChainProcessedTxs = await lc.state.bitcoin.processedTxs
     let bestHeaderHeight = (await rpc.getBlockchainInfo()).headers
     if (bestHeaderHeight >= pegChainHeaders.length) {
       await this.relayHeaders(pegChainHeaders.length - 1)
     }
     // Check for Bitcoin deposits
+    try {
+      let allReceivedDepositTxs = await rpc.listTransactions('*', 1e9)
+      let depositsToRelay = allReceivedDepositTxs.filter(
+        tx =>
+          tx.address === this.depositAddress &&
+          tx.category === 'receive' &&
+          !pegChainProcessedTxs[tx.txid]
+      )
+      let pegChainDepositTxs = []
+      for (let i = 0; i < depositsToRelay.length; i++) {
+        const VERBOSITY = 2
+        let depositTx = depositsToRelay[i]
+        let blockContainingDepositTx = await rpc.getBlock(
+          depositTx.blockhash,
+          VERBOSITY
+        )
+        let txHashesInBlock = blockContainingDepositTx.tx.map(tx => {
+          return Buffer.from(tx.txid, 'hex').reverse()
+        })
+        let txHashesInBlockToIncludeInProof = [
+          Buffer.from(depositTx.txid, 'hex').reverse()
+        ]
+        let proof = bmp.build({
+          hashes: txHashesInBlock,
+          include: txHashesInBlockToIncludeInProof
+        })
 
+        let pegChainDepositTx = {
+          type: 'bitcoin',
+          height: blockContainingDepositTx.height,
+          proof,
+          transactions: blockContainingDepositTx.tx
+            .filter(tx => tx.txid === depositTx.txid)
+            .map(tx => Buffer.from(tx.hex, 'hex'))
+        }
+      }
+    } catch (e) {
+      console.log(e)
+    }
     // Get current weighted multisig address
+  }
+}
+
+async function buildDepositProofForTxid(
+  rpc: any,
+  blockHash: string,
+  txid: string,
+  vout: number
+) {
+  try {
+    console.log('getting tx..')
+    console.log(txid)
+    let tx = await rpc.getRawTransaction(txid, true)
+    console.log(tx)
+    return
+  } catch (e) {
+    console.log(e)
   }
 }
 

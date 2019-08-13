@@ -52,7 +52,9 @@ test.beforeEach(async function(t) {
   let genesisHeader = await rpc.getBlockHeader(genesisHash)
 
   let app = lotion({
-    initialState: { bitcoin: { headers: [formatHeader(genesisHeader)] } }
+    initialState: {
+      bitcoin: { headers: [formatHeader(genesisHeader)], processedTxs: {} }
+    }
   })
 
   app.use(function(state, tx, context) {
@@ -86,20 +88,25 @@ test.only('header and deposit relaying', async function(t) {
   let lc = t.context.lotionLightClient
   let rpc = t.context.bitcoind.rpc
   let aliceAddress = await rpc.getNewAddress()
+  let depositAddress = await rpc.getNewAddress()
 
   await rpc.generateToAddress(101, aliceAddress)
 
+  console.log(depositAddress)
   let relay = new Relay({
     bitcoinRPC: t.context.bitcoind.rpc,
-    lotionLightClient: lc
+    lotionLightClient: lc,
+    depositAddress
   })
+
+  await relay.start()
 
   t.is(await lc.state.bitcoin.headers.length, 1)
   await relay.step()
   t.is(await lc.state.bitcoin.headers.length, 102)
-  await rpc.generateToAddress(1, aliceAddress)
+  await rpc.generateToAddress(2, aliceAddress)
   await relay.step()
-  t.is(await lc.state.bitcoin.headers.length, 103)
+  t.is(await lc.state.bitcoin.headers.length, 104)
 
   let latestBlockHashOnBtc = await rpc.getBestBlockHash()
   let latestBtcHeader = await rpc.getBlockHeader(latestBlockHashOnBtc)
@@ -107,6 +114,10 @@ test.only('header and deposit relaying', async function(t) {
   let pegHeaders = await lc.state.bitcoin.headers
   let latestBlockHeaderOnPeg = pegHeaders[pegHeaders.length - 1]
   t.is(latestBlockHeaderOnPeg.timestamp, latestBtcHeader.time)
+
+  await rpc.sendToAddress(depositAddress, 10)
+  await rpc.generateToAddress(1, aliceAddress)
+  await relay.step()
 })
 
 function formatHeader(header) {
