@@ -13,6 +13,8 @@ let createBitcoind = require('bitcoind')
 let { tmpdir } = require('os')
 let RPCClient = require('bitcoin-core')
 let Blockchain = require('blockchain-spv')
+let decodeBitcoinTx = require('bitcoin-protocol').types.transaction.decode
+let { getTxHash } = require('bitcoin-net/src/utils.js')
 
 async function makeBitcoind() {
   let rpcport = await getPort()
@@ -53,7 +55,11 @@ test.beforeEach(async function(t) {
 
   let app = lotion({
     initialState: {
-      bitcoin: { headers: [formatHeader(genesisHeader)], processedTxs: {} }
+      bitcoin: {
+        headers: [formatHeader(genesisHeader)],
+        processedTxs: {},
+        _txs: []
+      }
     }
   })
 
@@ -71,6 +77,13 @@ test.beforeEach(async function(t) {
       } catch (e) {
         console.log(e)
       }
+    }
+    if (tx.type === 'bitcoin' && tx.proof) {
+      let btcTx = decodeBitcoinTx(tx.transactions[0])
+      console.log(btcTx)
+      let txid = getTxHash(btcTx).toString('hex')
+      state.bitcoin.processedTxs[txid] = true
+      state.bitcoin._txs.push(btcTx)
     }
   })
 
