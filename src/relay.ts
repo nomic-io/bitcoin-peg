@@ -1,5 +1,7 @@
 import bmp = require('bitcoin-merkle-proof')
 let encodeBitcoinTx = require('bitcoin-protocol').types.transaction.encode
+let decodeBitcoinTx = require('bitcoin-protocol').types.transaction.decode
+let { getTxHash } = require('bitcoin-net/src/utils.js')
 
 interface RelayOptions {
   bitcoinRPC: any
@@ -103,14 +105,22 @@ export class Relay {
           hashes: txHashesInBlock,
           include: txHashesInBlockToIncludeInProof
         })
-
         let pegChainDepositTx = {
           type: 'bitcoin',
           height: blockContainingDepositTx.height,
           proof,
           transactions: blockContainingDepositTx.tx
             .filter(tx => tx.txid === depositTx.txid)
-            .map(tx => Buffer.from(tx.hex, 'hex'))
+            .filter(tx => {
+              let txid = getTxHash(
+                decodeBitcoinTx(Buffer.from(tx.hex, 'hex'))
+              ).toString('hex')
+
+              return pegChainProcessedTxs[txid] !== true
+            })
+            .map(tx => {
+              return Buffer.from(tx.hex, 'hex')
+            })
         }
         pegChainDepositTxs.push(pegChainDepositTx)
       }
