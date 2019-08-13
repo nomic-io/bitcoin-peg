@@ -112,28 +112,17 @@ export class Relay {
             .filter(tx => tx.txid === depositTx.txid)
             .map(tx => Buffer.from(tx.hex, 'hex'))
         }
+        pegChainDepositTxs.push(pegChainDepositTx)
+      }
+
+      // Relay deposit transactions to the peg chain
+      for (let i = 0; i < pegChainDepositTxs.length; i++) {
+        await lc.send(pegChainDepositTxs[i])
       }
     } catch (e) {
       console.log(e)
     }
     // Get current weighted multisig address
-  }
-}
-
-async function buildDepositProofForTxid(
-  rpc: any,
-  blockHash: string,
-  txid: string,
-  vout: number
-) {
-  try {
-    console.log('getting tx..')
-    console.log(txid)
-    let tx = await rpc.getRawTransaction(txid, true)
-    console.log(tx)
-    return
-  } catch (e) {
-    console.log(e)
   }
 }
 
