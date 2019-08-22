@@ -159,3 +159,10 @@ function formatHeader(header) {
     nonce: Number(header.nonce)
   }
 }
+
+export function convertValidatorsToLotion(validators) {
+  return validators.reduce((obj, v) => {
+    obj[v.pub_key.value] = v.voting_power
+    return obj
+  }, {})
+}
