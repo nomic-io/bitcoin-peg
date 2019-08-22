@@ -5,6 +5,8 @@ export interface ValidatorMap {
   [index: string]: number
 }
 
+export type BitcoinNetwork = 'regtest' | 'testnet' | 'mainnet'
+
 /**
  * Maps validator public key (base64) to signatory public key (buffer)
  */

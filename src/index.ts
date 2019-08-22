@@ -18,6 +18,7 @@ const {
   getVotingPowerThreshold
 } = require('./reserve.js')
 
+import { BitcoinNetwork } from './types'
 // TODO: get this from somewhere else
 const { getTxHash } = require('bitcoin-net/src/utils.js')
 
@@ -27,13 +28,18 @@ const MIN_WITHDRAWAL = 2500 // in satoshis
 
 const MAX_HEADERS = 4032
 
-let bitcoinPeg: any = function(initialHeader, coinName, chainOpts = {}) {
+let bitcoinPeg: any = function(
+  initialHeader,
+  coinName,
+  network: BitcoinNetwork = 'testnet'
+) {
   if (!initialHeader) {
     throw Error('"initialHeader" argument is required')
   }
   if (!coinName) {
     throw Error('"coinName" argument is required')
   }
+  let chainOpts = getChainOpts(network)
   // TODO: use nested routing for different tx types
   function initializer(state) {
     console.log('called bitcoin peg initializer')
@@ -86,8 +92,6 @@ let bitcoinPeg: any = function(initialHeader, coinName, chainOpts = {}) {
   function headersTx(state, tx, context) {
     let chain = Blockchain({
       store: state.chain,
-      // TODO: config
-      allowMinDifficultyBlocks: true,
       ...chainOpts
     })
     // TODO: pass in block timestamp to use current time in verification
@@ -353,6 +357,20 @@ bitcoinPeg.coinsHandler = function coinsHandler(routeName: string) {
       let btc = context.modules[routeName]
       btc.addWithdrawal(amount, script)
     }
+  }
+}
+
+function getChainOpts(network: BitcoinNetwork) {
+  if (network === 'testnet') {
+    return {
+      allowMinDifficultyBlocks: true
+    }
+  } else if (network === 'regtest') {
+    return {
+      noRetargeting: true
+    }
+  } else if (network === 'mainnet') {
+    return {}
   }
 }
 
