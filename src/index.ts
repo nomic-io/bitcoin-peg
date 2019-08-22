@@ -36,6 +36,9 @@ let bitcoinPeg: any = function(
   if (!initialHeader) {
     throw Error('"initialHeader" argument is required')
   }
+  if (initialHeader.height % 2016 !== 0) {
+    throw new Error('"initialHeader.height" must be divisible by 2016')
+  }
   if (!coinName) {
     throw Error('"coinName" argument is required')
   }
