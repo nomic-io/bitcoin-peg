@@ -64,7 +64,7 @@ test.beforeEach(async function(t) {
   })
 
   app.use(function(state, tx, context) {
-    if (tx.type === 'headers') {
+    if (tx.type === 'bitcoin' && tx.headers) {
       try {
         let chain = new Blockchain({
           start: state.bitcoin.headers[0],
@@ -97,7 +97,7 @@ test.afterEach.always(async function(t) {
   removeSync(t.context.bitcoind.dataPath)
 })
 
-test.only('header and deposit relaying', async function(t) {
+test.skip('header and deposit relaying', async function(t) {
   let lc = t.context.lotionLightClient
   let rpc = t.context.bitcoind.rpc
   let aliceAddress = await rpc.getNewAddress()
