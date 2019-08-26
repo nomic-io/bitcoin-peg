@@ -108,8 +108,8 @@ test.skip('header and deposit relaying', async function(t) {
   console.log(depositAddress)
   let relay = new Relay({
     bitcoinRPC: t.context.bitcoind.rpc,
-    lotionLightClient: lc,
-    depositAddress
+    lotionLightClient: lc
+    // depositAddress
   })
 
   await relay.start()

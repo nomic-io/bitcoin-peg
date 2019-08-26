@@ -6,13 +6,14 @@ let { readFileSync, writeFileSync } = require('fs')
 let { randomBytes } = require('crypto')
 let { join, dirname } = require('path')
 let secp = require('secp256k1')
-let { connect } = require('lotion-mock')
+let { connect } = require('lotion')
 let { commitPubkey, signDisbursal } = require('../dist/src/signatory.js')
 let DJSON = require('deterministic-json')
 
 async function main() {
   let genesisPath = process.argv[2]
   let privValidatorPath = process.argv[3]
+  let lotionRpcSeed = process.argv[4]
 
   if (genesisPath == null || privValidatorPath == null) {
     console.error(
@@ -45,7 +46,13 @@ async function main() {
     )
   }
 
-  let client = await connect(31338)
+  let client = await connect(
+    null,
+    {
+      genesis: require(genesisPath),
+      nodes: [lotionRpcSeed]
+    }
+  )
   console.log('connected to peg zone network')
 
   // ensure we haven't committed to a key yet

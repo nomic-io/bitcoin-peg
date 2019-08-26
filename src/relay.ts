@@ -1,19 +1,13 @@
+import { getSignatoryScriptHashFromPegZone } from './signatory'
 import bmp = require('bitcoin-merkle-proof')
 let encodeBitcoinTx = require('bitcoin-protocol').types.transaction.encode
 let decodeBitcoinTx = require('bitcoin-protocol').types.transaction.decode
+let bitcoin = require('bitcoinjs-lib')
 let { getTxHash } = require('bitcoin-net/src/utils.js')
 
 interface RelayOptions {
   bitcoinRPC: any
   lotionLightClient: any
-  pollIntervalSeconds?: number
-  /**
-   * Optionally specify an address to watch for deposits.
-   *
-   * If this isn't explicitly provided, it will be derived
-   * from the signatory keys on the peg zone state.
-   */
-  depositAddress?: string
 }
 
 /**
@@ -29,19 +23,12 @@ interface RelayOptions {
  */
 export class Relay {
   private bitcoinRPC: any
-  private pollIntervalSeconds: number = 10
   private lotionLightClient: any
-  private depositAddress?: string
 
   constructor(relayOpts: RelayOptions) {
     this.bitcoinRPC = relayOpts.bitcoinRPC
-    if (relayOpts.pollIntervalSeconds) {
-      this.pollIntervalSeconds = relayOpts.pollIntervalSeconds
-    }
+
     this.lotionLightClient = relayOpts.lotionLightClient
-    if (relayOpts.depositAddress) {
-      this.depositAddress = relayOpts.depositAddress
-    }
   }
   async start() {
     let rpc = this.bitcoinRPC
@@ -54,7 +41,6 @@ export class Relay {
     let lastHeader = await rpc.getBlockHeader(lastBlockHash)
     let headers = [formatHeader(lastHeader)]
     while (lastHeight > startHeight + 1) {
-      console.log('getting header at height ' + lastHeight)
       lastHeader = await rpc.getBlockHeader(lastHeader.previousblockhash)
 
       headers.push(formatHeader(lastHeader))
@@ -66,7 +52,6 @@ export class Relay {
         type: 'bitcoin',
         headers: headers.slice(i, i + 100)
       })
-      console.log(result)
     }
   }
   /**
@@ -77,72 +62,85 @@ export class Relay {
   async step() {
     let rpc = this.bitcoinRPC
     let lc = this.lotionLightClient
-    // Relay any headers not yet seen by the peg chain.
-    let pegChainHeaders = await lc.state.bitcoin.chain
-    console.log('peg chain headers:')
-    console.log(pegChainHeaders)
-    let pegChainProcessedTxs = await lc.state.bitcoin.processedTxs
-    let bestHeaderHeight = (await rpc.getBlockchainInfo()).headers
-    if (bestHeaderHeight >= pegChainHeaders.length) {
-      let result = await this.relayHeaders(
-        pegChainHeaders[pegChainHeaders.length - 1].height
+    try {
+      let p2ss = await getSignatoryScriptHashFromPegZone(lc)
+      let p2ssAddress = bitcoin.payments.p2wsh({
+        redeem: { output: p2ss },
+        network: bitcoin.networks.testnet // TODO
+      }).address
+      console.log('p2ss address:')
+      console.log(p2ssAddress)
+      await rpc.importAddress(
+        /*address=*/ p2ssAddress,
+        /*label=*/ '',
+        /*rescan=*/ false,
+        /*p2sh=*/ false
       )
-    }
-    // Check for Bitcoin deposits
-
-    let allReceivedDepositTxs = await rpc.listTransactions('*', 1e9)
-    console.log('got deposit txs:')
-    console.log(allReceivedDepositTxs)
-    let depositsToRelay = allReceivedDepositTxs.filter(
-      tx =>
-        tx.address === this.depositAddress &&
-        tx.category === 'receive' &&
-        !pegChainProcessedTxs[tx.txid]
-    )
-    let pegChainDepositTxs = []
-    for (let i = 0; i < depositsToRelay.length; i++) {
-      const VERBOSITY = 2
-      let depositTx = depositsToRelay[i]
-      let blockContainingDepositTx = await rpc.getBlock(
-        depositTx.blockhash,
-        VERBOSITY
-      )
-      let txHashesInBlock = blockContainingDepositTx.tx.map(tx => {
-        return Buffer.from(tx.txid, 'hex').reverse()
-      })
-      let txHashesInBlockToIncludeInProof = [
-        Buffer.from(depositTx.txid, 'hex').reverse()
-      ]
-      let proof = bmp.build({
-        hashes: txHashesInBlock,
-        include: txHashesInBlockToIncludeInProof
-      })
-      let pegChainDepositTx = {
-        type: 'bitcoin',
-        height: blockContainingDepositTx.height,
-        proof,
-        transactions: blockContainingDepositTx.tx
-          .filter(tx => tx.txid === depositTx.txid)
-          .filter(tx => {
-            let txid = getTxHash(
-              decodeBitcoinTx(Buffer.from(tx.hex, 'hex'))
-            ).toString('hex')
-
-            return pegChainProcessedTxs[txid] !== true
-          })
-          .map(tx => {
-            return Buffer.from(tx.hex, 'hex')
-          })
+      // Relay any headers not yet seen by the peg chain.
+      let pegChainHeaders = await lc.state.bitcoin.chain
+      let pegChainProcessedTxs = await lc.state.bitcoin.processedTxs
+      let bestHeaderHeight = (await rpc.getBlockchainInfo()).headers
+      if (bestHeaderHeight >= pegChainHeaders.length) {
+        await this.relayHeaders(
+          pegChainHeaders[pegChainHeaders.length - 1].height
+        )
       }
-      pegChainDepositTxs.push(pegChainDepositTx)
-    }
+      // Check for Bitcoin deposits
 
-    // Relay deposit transactions to the peg chain
-    for (let i = 0; i < pegChainDepositTxs.length; i++) {
-      await lc.send(pegChainDepositTxs[i])
-    }
+      let allReceivedDepositTxs = await rpc.listTransactions('*', 1e9, 0, true)
+      let depositsToRelay = allReceivedDepositTxs.filter(
+        tx =>
+          tx.address === p2ssAddress &&
+          tx.category === 'receive' &&
+          typeof tx.blockhash === 'string' &&
+          !pegChainProcessedTxs[tx.txid]
+      )
+      let pegChainDepositTxs = []
+      for (let i = 0; i < depositsToRelay.length; i++) {
+        const VERBOSITY = 2
+        let depositTx = depositsToRelay[i]
+        let blockContainingDepositTx = await rpc.getBlock(
+          depositTx.blockhash,
+          VERBOSITY
+        )
+        let txHashesInBlock = blockContainingDepositTx.tx.map(tx => {
+          return Buffer.from(tx.txid, 'hex').reverse()
+        })
+        let txHashesInBlockToIncludeInProof = [
+          Buffer.from(depositTx.txid, 'hex').reverse()
+        ]
+        let proof = bmp.build({
+          hashes: txHashesInBlock,
+          include: txHashesInBlockToIncludeInProof
+        })
+        let pegChainDepositTx = {
+          type: 'bitcoin',
+          height: blockContainingDepositTx.height,
+          proof,
+          transactions: blockContainingDepositTx.tx
+            .filter(tx => tx.txid === depositTx.txid)
+            .filter(tx => {
+              let txid = getTxHash(
+                decodeBitcoinTx(Buffer.from(tx.hex, 'hex'))
+              ).toString('hex')
 
-    // Get current weighted multisig address
+              return pegChainProcessedTxs[txid] !== true
+            })
+            .map(tx => {
+              return Buffer.from(tx.hex, 'hex')
+            })
+        }
+        pegChainDepositTxs.push(pegChainDepositTx)
+      }
+
+      // Relay deposit transactions to the peg chain
+      for (let i = 0; i < pegChainDepositTxs.length; i++) {
+        let result = await lc.send(pegChainDepositTxs[i])
+      }
+    } catch (e) {
+      console.log('error during relay:')
+      console.log(e)
+    }
   }
 }
 

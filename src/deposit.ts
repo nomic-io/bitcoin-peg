@@ -28,7 +28,6 @@ export function createBitcoinTx(
 
   // output that pays to the signatory set
   let depositOutput = createOutput(validators, signatoryKeys)
-  console.log(depositOutput)
   try {
     tx.addOutput(depositOutput, amount)
   } catch (e) {

@@ -70,7 +70,6 @@ export function buildSignatoryCommitmentTx(
   if (signatoryIndex == null) {
     throw Error('Given validator key not found in validator set')
   }
-  console.log(signatoryPub)
   let signature = ed25519Sign(privValidator, signatoryPub)
 
   return {
@@ -145,6 +144,16 @@ function ed25519Sign(privValidator: ValidatorKey, message) {
   let priv = convertEd25519(ref10Priv)
 
   return ed.sign(message, pub, priv)
+}
+
+export async function getSignatoryScriptHashFromPegZone(lightClient: any) {
+  let signatoryKeys = await lightClient.state.bitcoin.signatoryKeys
+  let lotionValidators = {}
+  lightClient.validators.forEach((validator: any) => {
+    lotionValidators[validator.pub_key.value] = validator.voting_power
+  })
+  let p2ss = createWitnessScript(lotionValidators, signatoryKeys)
+  return p2ss
 }
 
 // TODO: move this somewhere else
