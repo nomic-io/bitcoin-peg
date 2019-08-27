@@ -53,23 +53,31 @@ export class Relay {
         break commonHeaderSearchLoop
       }
     }
+    console.log('found common header:')
     if (!commonHeaderHash) {
       throw new Error('No common headers found between peg chain and bitcoind')
     }
+    console.log(commonHeaderHash)
 
     let lastBlockHash = await rpc.getBestBlockHash()
     let lastHeader = await rpc.getBlockHeader(lastBlockHash)
     let headers = [formatHeader(lastHeader)]
-    while (lastHeader.previousblockhash !== commonHeaderHash) {
+    console.log('building headers from bitcoind..')
+    while (
+      lastHeader.previousblockhash !== commonHeaderHash &&
+      lastHeader.hash !== commonHeaderHash
+    ) {
       lastHeader = await rpc.getBlockHeader(lastHeader.previousblockhash)
       headers.push(formatHeader(lastHeader))
     }
     headers.reverse()
+    console.log('broadcasting a header batch')
     for (let i = 0; i < headers.length; i += 100) {
       let result = await this.lotionLightClient.send({
         type: 'bitcoin',
         headers: headers.slice(i, i + 100)
       })
+      console.log(result)
     }
   }
   /**
@@ -86,6 +94,8 @@ export class Relay {
         redeem: { output: p2ss },
         network: bitcoin.networks.testnet // TODO
       }).address
+      console.log('p2ss address:')
+      console.log(p2ssAddress)
       await rpc.importAddress(
         /*address=*/ p2ssAddress,
         /*label=*/ '',
@@ -95,8 +105,9 @@ export class Relay {
       // Relay any headers not yet seen by the peg chain.
       let pegChainHeaders = await lc.state.bitcoin.chain
       let pegChainProcessedTxs = await lc.state.bitcoin.processedTxs
-      let bestHeaderHeight = (await rpc.getBlockchainInfo()).headers
+      console.log('relaying headers')
       await this.relayHeaders(pegChainHeaders)
+      console.log('relayed headers.')
       // Check for Bitcoin deposits
 
       let allReceivedDepositTxs = await rpc.listTransactions('*', 1e9, 0, true)
@@ -149,6 +160,7 @@ export class Relay {
       for (let i = 0; i < pegChainDepositTxs.length; i++) {
         let result = await lc.send(pegChainDepositTxs[i])
       }
+      console.log('reached end of relayer.step()')
     } catch (e) {
       console.log('error during relay:')
       console.log(e)
