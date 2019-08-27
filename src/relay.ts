@@ -3,7 +3,7 @@ import bmp = require('bitcoin-merkle-proof')
 let encodeBitcoinTx = require('bitcoin-protocol').types.transaction.encode
 let decodeBitcoinTx = require('bitcoin-protocol').types.transaction.decode
 let bitcoin = require('bitcoinjs-lib')
-let { getTxHash } = require('bitcoin-net/src/utils.js')
+let { getTxHash, getBlockHash } = require('bitcoin-net/src/utils.js')
 
 interface RelayOptions {
   bitcoinRPC: any
@@ -27,24 +27,42 @@ export class Relay {
 
   constructor(relayOpts: RelayOptions) {
     this.bitcoinRPC = relayOpts.bitcoinRPC
-
     this.lotionLightClient = relayOpts.lotionLightClient
   }
   async start() {
     let rpc = this.bitcoinRPC
   }
 
-  async relayHeaders(startHeight = 0) {
+  async relayHeaders(pegChainHeaders) {
     let rpc = this.bitcoinRPC
+    // Compute common ancestor
+    let commonHeaderHash
+    commonHeaderSearchLoop: for (
+      let i = pegChainHeaders.length - 1;
+      i >= 0;
+      i--
+    ) {
+      // Check if peg chain header is in the longest chain
+      let pegChainHeader = pegChainHeaders[i]
+      let blockHash = getBlockHash(pegChainHeader)
+        .reverse()
+        .toString('hex')
+      let rpcHeaderInfo = await rpc.getBlockHeader(blockHash)
+      if (rpcHeaderInfo && rpcHeaderInfo.confirmations !== -1) {
+        commonHeaderHash = blockHash
+        break commonHeaderSearchLoop
+      }
+    }
+    if (!commonHeaderHash) {
+      throw new Error('No common headers found between peg chain and bitcoind')
+    }
+
     let lastBlockHash = await rpc.getBestBlockHash()
-    let lastHeight = (await rpc.getBlockchainInfo()).headers
     let lastHeader = await rpc.getBlockHeader(lastBlockHash)
     let headers = [formatHeader(lastHeader)]
-    while (lastHeight > startHeight + 1) {
+    while (lastHeader.previousblockhash !== commonHeaderHash) {
       lastHeader = await rpc.getBlockHeader(lastHeader.previousblockhash)
-
       headers.push(formatHeader(lastHeader))
-      lastHeight--
     }
     headers.reverse()
     for (let i = 0; i < headers.length; i += 100) {
@@ -68,8 +86,6 @@ export class Relay {
         redeem: { output: p2ss },
         network: bitcoin.networks.testnet // TODO
       }).address
-      console.log('p2ss address:')
-      console.log(p2ssAddress)
       await rpc.importAddress(
         /*address=*/ p2ssAddress,
         /*label=*/ '',
@@ -80,11 +96,7 @@ export class Relay {
       let pegChainHeaders = await lc.state.bitcoin.chain
       let pegChainProcessedTxs = await lc.state.bitcoin.processedTxs
       let bestHeaderHeight = (await rpc.getBlockchainInfo()).headers
-      if (bestHeaderHeight >= pegChainHeaders.length) {
-        await this.relayHeaders(
-          pegChainHeaders[pegChainHeaders.length - 1].height
-        )
-      }
+      await this.relayHeaders(pegChainHeaders)
       // Check for Bitcoin deposits
 
       let allReceivedDepositTxs = await rpc.listTransactions('*', 1e9, 0, true)
@@ -156,6 +168,14 @@ function formatHeader(header) {
     bits: parseInt(header.bits, 16),
     nonce: Number(header.nonce)
   }
+}
+
+function delay(ms = 1000) {
+  return new Promise((resolve, reject) => {
+    setTimeout(function() {
+      resolve()
+    }, ms)
+  })
 }
 
 export function convertValidatorsToLotion(validators) {
