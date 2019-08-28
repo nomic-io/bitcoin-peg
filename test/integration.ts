@@ -7,10 +7,12 @@ let test = anyTest as TestInterface<{
   lotionApp: any
   lightClient: any
   relay: any
-  alice: any
-  bob: any
-  carol: any
-  miner: any
+  aliceRpc: any
+  bobRpc: any
+  carolRpc: any
+  minerRpc: any
+  aliceWallet: any
+  bobWallet: any
 }>
 import * as coins from 'coins'
 import lotion = require('lotion-mock')
@@ -74,7 +76,7 @@ async function makeBitcoind(t) {
   await bitcoind.started() //?.
 
   // Create RPC clients
-  t.context.alice = new RPCClient({
+  t.context.aliceRpc = new RPCClient({
     network: 'regtest',
     port: rpcport,
     wallet: 'alice-wallet',
@@ -82,7 +84,7 @@ async function makeBitcoind(t) {
     password: 'j1DuzF7QRUp-iSXjgewO9T_WT1Qgrtz_XWOHCMn_O-Y='
   })
 
-  t.context.bob = new RPCClient({
+  t.context.bobRpc = new RPCClient({
     network: 'regtest',
     port: rpcport,
     wallet: 'bob-wallet',
@@ -90,7 +92,7 @@ async function makeBitcoind(t) {
     password: 'j1DuzF7QRUp-iSXjgewO9T_WT1Qgrtz_XWOHCMn_O-Y='
   })
 
-  t.context.carol = new RPCClient({
+  t.context.carolRpc = new RPCClient({
     network: 'regtest',
     port: rpcport,
     wallet: 'carol-wallet',
@@ -98,7 +100,7 @@ async function makeBitcoind(t) {
     password: 'j1DuzF7QRUp-iSXjgewO9T_WT1Qgrtz_XWOHCMn_O-Y='
   })
 
-  t.context.miner = new RPCClient({
+  t.context.minerRpc = new RPCClient({
     network: 'regtest',
     port: rpcport,
     wallet: 'miner-wallet',
@@ -107,13 +109,19 @@ async function makeBitcoind(t) {
   })
 
   // Create wallets
-  await t.context.alice.createWallet('alice-wallet')
-  await t.context.bob.createWallet('bob-wallet')
-  await t.context.carol.createWallet('carol-wallet')
-  await t.context.miner.createWallet('miner-wallet')
+  await t.context.aliceRpc.createWallet('alice-wallet')
+  await t.context.bobRpc.createWallet('bob-wallet')
+  await t.context.carolRpc.createWallet('carol-wallet')
+  await t.context.minerRpc.createWallet('miner-wallet')
 
   return { rpc: bitcoind.rpc, port, rpcport, node: bitcoind, dataPath }
 }
+
+function makeCoinsWallets(t, lc) {
+  t.context.aliceWallet = coins.wallet(randomBytes(32), lc, { route: 'mycoin' })
+  t.context.bobWallet = coins.wallet(randomBytes(32), lc, { route: 'mycoin' })
+}
+
 function makeLotionApp(trustedBtcHeader) {
   let trustedHeader = formatHeader(trustedBtcHeader)
   let app = lotion({
@@ -141,7 +149,6 @@ function makeLotionApp(trustedBtcHeader) {
 }
 
 test.beforeEach(async function(t) {
-  let last = Date.now()
   let btcd = await makeBitcoind(t)
   t.context.bitcoind = btcd
   let genesisHash = await btcd.rpc.getBlockHash(0) //?.
@@ -150,6 +157,7 @@ test.beforeEach(async function(t) {
 
   t.context.lotionApp = makeLotionApp(genesisBlock)
   let lc: any = await lotion.connect(t.context.lotionApp) //?.
+  makeCoinsWallets(t, lc)
 
   t.context.relay = new Relay({
     bitcoinRPC: btcd.rpc,
@@ -163,8 +171,25 @@ test.afterEach.always(async function(t) {
   removeSync(t.context.bitcoind.dataPath)
 })
 
-test.only('sanity', async function(t) {
-  t.is(true, true)
+test('deposit / send / withdraw', async function(t) {
+  let ctx = t.context
+  // Alice has a Bitcoin address
+  let aliceBtcAddress = await ctx.aliceRpc.getNewAddress()
+
+  // ... but Alice has no coins :(
+  let aliceBtcBalance = await ctx.aliceRpc.getBalance()
+  t.is(aliceBtcBalance, 0)
+
+  // Alice mines a block!
+  await ctx.aliceRpc.generateToAddress(1, aliceBtcAddress)
+
+  // Other miners mine 100 more blocks
+  let minerBtcAddress = await ctx.minerRpc.getNewAddress()
+  await ctx.minerRpc.generateToAddress(100, minerBtcAddress)
+
+  // Alice has some spendable Bitcoin!
+  aliceBtcBalance = await ctx.aliceRpc.getBalance()
+  t.is(aliceBtcBalance, 50)
 })
 
 function formatHeader(header) {

@@ -22,9 +22,3 @@ test('voting power threshold calculation is 2/3 of total', function(t) {
   let votingPowerThreshold = getVotingPowerThreshold(signatorySet)
   t.is(votingPowerThreshold, 40)
 })
-
-test('witness script creation', function(t) {
-  let witnessScript = createWitnessScript(validatorMap, signatoryMap)
-  // console.log(witnessScript)
-  t.snapshot(witnessScript)
-})
