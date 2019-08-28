@@ -39,6 +39,7 @@
     "standard": "^12.0.1",
     "tendermint": "4.0.6",
     "tendermint-node": "^5.1.2",
+    "typescript": "3.5.3",
     "webcoin": "^3.1.0"
   },
   "scripts": {
