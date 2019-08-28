@@ -21,7 +21,7 @@
     "webcoin-regtest": "0.0.1"
   },
   "devDependencies": {
-    "ava": "^1.1.0",
+    "ava": "2.3.0",
     "bitcoin-inventory": "^1.2.2",
     "bitcoind": "github:nomic-io/node-bitcoind#v0.18.0",
     "bs58check": "2.1.2",
@@ -29,7 +29,7 @@
     "depcheck": "^0.6.11",
     "deterministic-json": "^1.0.5",
     "execa": "1.0.0",
-    "fs-extra": "8.0.1",
+    "fs-extra": "8.1.0",
     "get-port": "5.0.0",
     "lotion": "0.4.26",
     "lotion-connect": "0.1.22",
