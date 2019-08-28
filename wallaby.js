@@ -4,7 +4,7 @@ module.exports = function(wallaby) {
       type: 'node',
       runner: 'node',
       params: {
-        env: 'DEBUG=bitcoin-peg*'
+        // env: 'DEBUG=bitcoin-net*'
       }
     },
     files: ['src/*.ts'],

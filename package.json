@@ -42,7 +42,7 @@
     "webcoin": "^3.1.0"
   },
   "scripts": {
-    "test": "depcheck && standard src/* bin/* index.js && nyc ava -v"
+    "test": "tsc && ava dist/test/*.js"
   },
   "repository": {
     "type": "git",
