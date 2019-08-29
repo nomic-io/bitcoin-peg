@@ -28,4 +28,5 @@ export interface ValidatorKey {
     type: KeyType
     value: string
   }
+  address?: string
 }

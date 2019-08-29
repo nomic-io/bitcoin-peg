@@ -36,10 +36,10 @@ let randomBytes = seed('seed')
 let base58 = require('bs58check')
 import { ValidatorMap, ValidatorKey, SignatoryMap } from '../src/types'
 
-let validatorKey: ValidatorKey = JSON.parse(genValidator()).Key
+let bobValidatorKey: ValidatorKey = JSON.parse(genValidator()).Key
 
 let lotionValidators: ValidatorMap = {
-  [validatorKey.pub_key.value]: 10
+  [bobValidatorKey.pub_key.value]: 10
 }
 
 let randBytes = randomBytes(32)
@@ -51,7 +51,7 @@ let signatoryKeyPair = {
 }
 
 let signatories: SignatoryMap = {
-  [validatorKey.pub_key.value]: signatoryPub
+  [bobValidatorKey.pub_key.value]: signatoryPub
 }
 
 async function makeBitcoind(t) {
@@ -117,7 +117,8 @@ async function makeBitcoind(t) {
   return { rpc: bitcoind.rpc, port, rpcport, node: bitcoind, dataPath }
 }
 
-function makeCoinsWallets(t, lc) {
+function makeCoinsWallets(t) {
+  let lc = t.context.lightClient
   t.context.aliceWallet = coins.wallet(randomBytes(32), lc, { route: 'mycoin' })
   t.context.bobWallet = coins.wallet(randomBytes(32), lc, { route: 'mycoin' })
 }
@@ -140,7 +141,7 @@ function makeLotionApp(trustedBtcHeader) {
     }
   })
   app.use('mycoin', coinsModule)
-  app.useBlock(function(state, context) {
+  app.useInitializer(function(state, context) {
     Object.assign(context.validators, lotionValidators)
   })
 
@@ -157,13 +158,24 @@ test.beforeEach(async function(t) {
 
   t.context.lotionApp = makeLotionApp(genesisBlock)
   let lc: any = await lotion.connect(t.context.lotionApp) //?.
-  makeCoinsWallets(t, lc)
+  console.log(bobValidatorKey)
+  lc.validators = [
+    {
+      address: bobValidatorKey.address,
+      pub_key: bobValidatorKey.pub_key,
+      power: 10,
+      voting_power: 10,
+      name: 'bob'
+    }
+  ]
+  console.log(lc.validators)
+  t.context.lightClient = lc
+  makeCoinsWallets(t)
 
   t.context.relay = new Relay({
     bitcoinRPC: btcd.rpc,
     lotionLightClient: lc
   })
-  t.context.lightClient = lc
 })
 
 test.afterEach.always(async function(t) {
@@ -173,6 +185,7 @@ test.afterEach.always(async function(t) {
 
 test('deposit / send / withdraw', async function(t) {
   let ctx = t.context
+  let lc = ctx.lightClient
   // Alice has a Bitcoin address
   let aliceBtcAddress = await ctx.aliceRpc.getNewAddress()
 
@@ -190,6 +203,18 @@ test('deposit / send / withdraw', async function(t) {
   // Alice has some spendable Bitcoin!
   aliceBtcBalance = await ctx.aliceRpc.getBalance()
   t.is(aliceBtcBalance, 50)
+
+  // Alice wants to deposit her Bitcoin into the peg zone,
+  // but there aren't any signatories on the peg zone yet.
+  let signatoryKeys = await lc.state.bitcoin.signatoryKeys
+  t.is(Object.keys(signatoryKeys).length, 0)
+
+  // Bob, however, is already a validator.
+  t.is(lc.validators[0].pub_key.value, bobValidatorKey.pub_key.value)
+
+  // Bob the validator wants to become a signatory.
+  let bobWallet = ctx.bobWallet
+  console.log(bobWallet.privkey)
 })
 
 function formatHeader(header) {
