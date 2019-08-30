@@ -29,9 +29,6 @@ export class Relay {
     this.bitcoinRPC = relayOpts.bitcoinRPC
     this.lotionLightClient = relayOpts.lotionLightClient
   }
-  async start() {
-    let rpc = this.bitcoinRPC
-  }
 
   async relayHeaders(pegChainHeaders) {
     let rpc = this.bitcoinRPC

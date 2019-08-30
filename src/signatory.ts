@@ -4,7 +4,7 @@ import { createHash } from 'crypto'
 import ed = require('ed25519-supercop')
 import secp = require('secp256k1')
 import * as bitcoin from 'bitcoinjs-lib'
-import { ValidatorKey, ValidatorMap } from './types'
+import { ValidatorKey, ValidatorMap, BitcoinNetwork } from './types'
 import {
   getSignatorySet,
   buildOutgoingTx,
@@ -154,6 +154,19 @@ export async function getSignatoryScriptHashFromPegZone(lightClient: any) {
   })
   let p2ss = createWitnessScript(lotionValidators, signatoryKeys)
   return p2ss
+}
+
+export async function getCurrentP2ssAddress(
+  lightClient: any,
+  network: BitcoinNetwork
+) {
+  let p2ss = await getSignatoryScriptHashFromPegZone(lightClient)
+
+  let p2ssAddress = bitcoin.payments.p2wsh({
+    redeem: { output: p2ss },
+    network: bitcoin.networks[network]
+  }).address
+  return p2ssAddress
 }
 
 // TODO: move this somewhere else
