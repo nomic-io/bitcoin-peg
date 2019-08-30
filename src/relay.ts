@@ -96,11 +96,12 @@ export class Relay {
     let lc = this.lotionLightClient
     try {
       let p2ss = await getSignatoryScriptHashFromPegZone(lc)
-      let p2ssAddress = await getCurrentP2ssAddress(lc, 'regtest')
+      let p2ssAddress = await getCurrentP2ssAddress(lc, this.network)
+      console.log(p2ss)
       console.log('p2ss address:')
       console.log(p2ssAddress)
       await rpc.importAddress(
-        /*address=*/ p2ssAddress,
+        /*address=*/ p2ss.toString('hex'),
         /*label=*/ '',
         /*rescan=*/ false,
         /*p2sh=*/ false

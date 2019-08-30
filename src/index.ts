@@ -1,5 +1,3 @@
-'use strict'
-
 const Blockchain = require('blockchain-spv')
 const verifyMerkleProof = require('bitcoin-merkle-proof').verify
 const protocol = require('bitcoin-protocol')
@@ -10,13 +8,13 @@ try {
 } catch (err) {}
 const secp256k1 = require('secp256k1')
 const bitcoin = require('bitcoinjs-lib')
-const {
+import {
   createWitnessScript,
   getSignatorySet,
   buildOutgoingTx,
   createOutput,
   getVotingPowerThreshold
-} = require('./reserve.js')
+} from './reserve'
 
 import { BitcoinNetwork } from './types'
 // TODO: get this from somewhere else
@@ -31,7 +29,7 @@ const MAX_HEADERS = 4032
 let bitcoinPeg: any = function(
   initialHeader,
   coinName,
-  network: BitcoinNetwork = 'testnet'
+  network: BitcoinNetwork
 ) {
   if (!initialHeader) {
     throw Error('"initialHeader" argument is required')
@@ -94,8 +92,8 @@ let bitcoinPeg: any = function(
   // verify and add to state
   function headersTx(state, tx, context) {
     let chain = Blockchain({
-      store: state.chain,
-      ...chainOpts
+      network,
+      store: state.chain
     })
     // TODO: pass in block timestamp to use current time in verification
     chain.add(tx.headers)
@@ -149,7 +147,11 @@ let bitcoinPeg: any = function(
       }
       // verify first output pays to signatory set
       // TODO: compare against older validator sets
-      let expectedP2ss = createOutput(context.validators, state.signatoryKeys)
+      let expectedP2ss = createOutput(
+        context.validators,
+        state.signatoryKeys,
+        network
+      )
       let depositOutput = bitcoinTx.outs[0]
       if (!depositOutput.script.equals(expectedP2ss)) {
         throw Error('Invalid deposit output')
@@ -263,7 +265,8 @@ let bitcoinPeg: any = function(
     let bitcoinTx = buildOutgoingTx(
       signingTx,
       context.validators,
-      signatoryKeys
+      signatoryKeys,
+      network
     )
     // TODO: handle dynamic signatory sets
     let p2ss = createWitnessScript(context.validators, signatoryKeys)
@@ -371,6 +374,7 @@ function getChainOpts(network: BitcoinNetwork) {
   } else if (network === 'regtest') {
     return {
       noRetargeting: true
+      // allowMinDifficultyBlocks: true
     }
   } else if (network === 'mainnet') {
     return {}

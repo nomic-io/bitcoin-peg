@@ -18,7 +18,7 @@ import * as coins from 'coins'
 import lotion = require('lotion-mock')
 import createBitcoind = require('bitcoind')
 import { tmpdir } from 'os'
-let { mkdirSync, removeSync } = require('fs-extra')
+let { mkdirSync, remove } = require('fs-extra')
 import { join } from 'path'
 import getPort = require('get-port')
 import {
@@ -128,10 +128,7 @@ function makeLotionApp(trustedBtcHeader) {
     context.validators = lotionValidators
   })
 
-  app.use(
-    'bitcoin',
-    bitcoinPeg(trustedHeader, 'mycoin', { noRetargeting: true })
-  )
+  app.use('bitcoin', bitcoinPeg(trustedHeader, 'mycoin', 'regtest'))
 
   let coinsModule: any = coins({
     initialBalances: {},
@@ -151,8 +148,13 @@ test.beforeEach(async function(t) {
   let genesisHash = await btcd.rpc.getBlockHash(0) //?.
 
   let genesisBlock = await btcd.rpc.getBlock(genesisHash) //?.
+  let generated = await t.context.minerRpc.generateToAddress(
+    2016,
+    await t.context.minerRpc.getNewAddress()
+  )
+  let trustedBlock = await btcd.rpc.getBlock(generated[generated.length - 1])
 
-  t.context.lotionApp = makeLotionApp(genesisBlock)
+  t.context.lotionApp = makeLotionApp(trustedBlock)
   let lc: any = await lotion.connect(t.context.lotionApp) //?.
   lc.validators = [
     {
@@ -167,14 +169,15 @@ test.beforeEach(async function(t) {
   makeCoinsWallets(t)
 
   t.context.relay = new Relay({
-    bitcoinRPC: btcd.rpc,
-    lotionLightClient: lc
+    bitcoinRPC: t.context.bobRpc,
+    lotionLightClient: lc,
+    network: 'regtest'
   })
 })
 
 test.afterEach.always(async function(t) {
-  t.context.bitcoind.node.kill()
-  removeSync(t.context.bitcoind.dataPath)
+  await t.context.bitcoind.node.kill()
+  await remove(t.context.bitcoind.dataPath)
 })
 
 test('deposit / send / withdraw', async function(t) {
@@ -182,17 +185,15 @@ test('deposit / send / withdraw', async function(t) {
   let lc = ctx.lightClient
   // Alice has a Bitcoin address
   let aliceBtcAddress = await ctx.aliceRpc.getNewAddress()
+  let minerBtcAddress = await ctx.minerRpc.getNewAddress()
 
   // ... but Alice has no coins :(
   let aliceBtcBalance = await ctx.aliceRpc.getBalance()
   t.is(aliceBtcBalance, 0)
 
-  // Alice mines a block!
-  await ctx.aliceRpc.generateToAddress(1, aliceBtcAddress)
-
-  // Other miners mine 100 more blocks
-  let minerBtcAddress = await ctx.minerRpc.getNewAddress()
-  await ctx.minerRpc.generateToAddress(100, minerBtcAddress)
+  // A miner sends Alice coins and mines a block!
+  await ctx.minerRpc.sendToAddress(aliceBtcAddress, 50)
+  await ctx.minerRpc.generateToAddress(1, minerBtcAddress)
 
   // Alice has some spendable Bitcoin!
   aliceBtcBalance = await ctx.aliceRpc.getBalance()
@@ -220,13 +221,22 @@ test('deposit / send / withdraw', async function(t) {
     lotionValidators,
     signatoryKeys,
     utxos,
-    base58.decode(ctx.aliceWallet.address())
+    base58.decode(ctx.aliceWallet.address()),
+    'regtest'
   )
   let signedDepositTx = await ctx.aliceRpc.signRawTransactionWithWallet(
     bitcoinDepositTx.toHex()
   )
   await ctx.aliceRpc.sendRawTransaction(signedDepositTx.hex)
+  await ctx.minerRpc.generateToAddress(1, minerBtcAddress)
   t.is(await ctx.aliceRpc.getBalance(), 0)
+
+  // Bob (the validator, signatory, relayer) does a relay step.
+  let state = await lc.state
+  t.is(state.bitcoin.chain.length, 1)
+  await ctx.relay.step()
+  state = await lc.state
+  t.is(state.bitcoin.chain.length, 3)
 })
 
 function formatHeader(header) {

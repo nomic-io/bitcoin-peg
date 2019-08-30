@@ -175,6 +175,6 @@ export function createOutput(
 
   return payments.p2wsh({
     redeem: { output: p2ss },
-    network: networks[network] // TODO
+    network: networks[network]
   }).output
 }
