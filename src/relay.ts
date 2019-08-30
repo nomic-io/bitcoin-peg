@@ -1,5 +1,11 @@
-import { getSignatoryScriptHashFromPegZone } from './signatory'
 import bmp = require('bitcoin-merkle-proof')
+
+import {
+  getSignatoryScriptHashFromPegZone,
+  getCurrentP2ssAddress
+} from './signatory'
+import { BitcoinNetwork } from './types'
+
 let encodeBitcoinTx = require('bitcoin-protocol').types.transaction.encode
 let decodeBitcoinTx = require('bitcoin-protocol').types.transaction.decode
 let bitcoin = require('bitcoinjs-lib')
@@ -8,6 +14,7 @@ let { getTxHash, getBlockHash } = require('bitcoin-net/src/utils.js')
 interface RelayOptions {
   bitcoinRPC: any
   lotionLightClient: any
+  network: BitcoinNetwork
 }
 
 /**
@@ -24,10 +31,12 @@ interface RelayOptions {
 export class Relay {
   private bitcoinRPC: any
   private lotionLightClient: any
+  private network: BitcoinNetwork
 
   constructor(relayOpts: RelayOptions) {
     this.bitcoinRPC = relayOpts.bitcoinRPC
     this.lotionLightClient = relayOpts.lotionLightClient
+    this.network = relayOpts.network
   }
 
   async relayHeaders(pegChainHeaders) {
@@ -87,10 +96,7 @@ export class Relay {
     let lc = this.lotionLightClient
     try {
       let p2ss = await getSignatoryScriptHashFromPegZone(lc)
-      let p2ssAddress = bitcoin.payments.p2wsh({
-        redeem: { output: p2ss },
-        network: bitcoin.networks.testnet // TODO
-      }).address
+      let p2ssAddress = await getCurrentP2ssAddress(lc, 'regtest')
       console.log('p2ss address:')
       console.log(p2ssAddress)
       await rpc.importAddress(

@@ -80,7 +80,11 @@ export function buildSignatoryCommitmentTx(
   }
 }
 
-export async function signDisbursal(client, signatoryPriv) {
+export async function signDisbursal(
+  client,
+  signatoryPriv,
+  network: BitcoinNetwork
+) {
   let signatoryPub = secp.publicKeyCreate(signatoryPriv)
   let validators = convertValidatorsToLotion(client.validators)
   let signatoryKeys = await client.state.bitcoin.signatoryKeys
@@ -103,7 +107,7 @@ export async function signDisbursal(client, signatoryPriv) {
     throw Error('No tx to be signed')
   }
 
-  let bitcoinTx = buildOutgoingTx(signingTx, validators, signatoryKeys)
+  let bitcoinTx = buildOutgoingTx(signingTx, validators, signatoryKeys, network)
 
   let p2ss = createWitnessScript(validators, signatoryKeys)
   let sigHashes = signingTx.inputs.map((input, i) =>

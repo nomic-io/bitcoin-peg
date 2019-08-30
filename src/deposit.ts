@@ -1,14 +1,15 @@
 'use strict'
+import * as bitcoin from 'bitcoinjs-lib'
 
 import { createOutput } from './reserve'
-import { ValidatorMap, SignatoryMap } from './types'
-import * as bitcoin from 'bitcoinjs-lib'
+import { BitcoinNetwork, SignatoryMap, ValidatorMap } from './types'
 
 export function createBitcoinTx(
   validators: ValidatorMap,
   signatoryKeys: SignatoryMap,
   utxos: bitcoin.TxOutput[],
-  destAddress: Buffer
+  destAddress: Buffer,
+  network: BitcoinNetwork
 ): bitcoin.Transaction {
   let tx = new bitcoin.Transaction()
 
@@ -27,7 +28,7 @@ export function createBitcoinTx(
   amount -= 10000
 
   // output that pays to the signatory set
-  let depositOutput = createOutput(validators, signatoryKeys)
+  let depositOutput = createOutput(validators, signatoryKeys, network)
   try {
     tx.addOutput(depositOutput, amount)
   } catch (e) {
@@ -37,7 +38,7 @@ export function createBitcoinTx(
   // output that commits to a destination address on the peg chain
   let addressOutput = bitcoin.payments.embed({
     data: [destAddress],
-    network: bitcoin.networks.testnet // TODO
+    network: bitcoin.networks[network]
   }).output
   tx.addOutput(addressOutput, 0)
 

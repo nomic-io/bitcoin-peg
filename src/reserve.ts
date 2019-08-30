@@ -1,5 +1,5 @@
 import { script, Transaction, payments, networks } from 'bitcoinjs-lib'
-import { ValidatorMap, SignatoryMap } from './types'
+import { ValidatorMap, SignatoryMap, BitcoinNetwork } from './types'
 
 const MAX_SIGNATORIES = 76
 const MIN_RELAY_FEE = 1000
@@ -121,7 +121,8 @@ export function getSignatorySet(validators: ValidatorMap) {
 export function buildOutgoingTx(
   signingTx,
   validators: ValidatorMap,
-  signatoryKeys: SignatoryMap
+  signatoryKeys: SignatoryMap,
+  network: BitcoinNetwork
 ) {
   let { inputs, outputs } = signingTx
 
@@ -143,7 +144,7 @@ export function buildOutgoingTx(
   }
 
   // change output
-  let p2ss = createOutput(validators, signatoryKeys)
+  let p2ss = createOutput(validators, signatoryKeys, network)
   tx.addOutput(p2ss, remainingAmount)
 
   // withdrawals pay fee
@@ -166,13 +167,14 @@ export function buildOutgoingTx(
 
 export function createOutput(
   validators: ValidatorMap,
-  signatoryKeys: SignatoryMap
+  signatoryKeys: SignatoryMap,
+  network: BitcoinNetwork
 ) {
   // p2ss = pay to signatory set
   let p2ss = createWitnessScript(validators, signatoryKeys)
 
   return payments.p2wsh({
     redeem: { output: p2ss },
-    network: networks.testnet // TODO
+    network: networks[network] // TODO
   }).output
 }
