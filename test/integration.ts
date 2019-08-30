@@ -24,7 +24,8 @@ import getPort = require('get-port')
 import {
   buildSignatoryCommitmentTx,
   commitPubkey,
-  signDisbursal
+  signDisbursal,
+  getCurrentP2ssAddress
 } from '../src/signatory'
 import * as seed from 'random-bytes-seed'
 import { Relay } from '../src/relay'
@@ -40,18 +41,6 @@ let bobValidatorKey: ValidatorKey = JSON.parse(genValidator()).Key
 
 let lotionValidators: ValidatorMap = {
   [bobValidatorKey.pub_key.value]: 10
-}
-
-let randBytes = randomBytes(32)
-let signatoryPub = secp.publicKeyCreate(randBytes)
-
-let signatoryKeyPair = {
-  publicKey: signatoryPub,
-  privateKey: randBytes
-}
-
-let signatories: SignatoryMap = {
-  [bobValidatorKey.pub_key.value]: signatoryPub
 }
 
 async function makeBitcoind(t) {
@@ -129,6 +118,16 @@ function makeLotionApp(trustedBtcHeader) {
     initialState: {}
   })
 
+  app.use(function(state, tx, context) {
+    context.validators = lotionValidators
+  })
+  app.useBlock(function(state, context) {
+    context.validators = lotionValidators
+  })
+  app.useInitializer(function(state, context) {
+    context.validators = lotionValidators
+  })
+
   app.use(
     'bitcoin',
     bitcoinPeg(trustedHeader, 'mycoin', { noRetargeting: true })
@@ -141,9 +140,6 @@ function makeLotionApp(trustedBtcHeader) {
     }
   })
   app.use('mycoin', coinsModule)
-  app.useInitializer(function(state, context) {
-    Object.assign(context.validators, lotionValidators)
-  })
 
   app.start()
   return app
@@ -158,7 +154,6 @@ test.beforeEach(async function(t) {
 
   t.context.lotionApp = makeLotionApp(genesisBlock)
   let lc: any = await lotion.connect(t.context.lotionApp) //?.
-  console.log(bobValidatorKey)
   lc.validators = [
     {
       address: bobValidatorKey.address,
@@ -168,7 +163,6 @@ test.beforeEach(async function(t) {
       name: 'bob'
     }
   ]
-  console.log(lc.validators)
   t.context.lightClient = lc
   makeCoinsWallets(t)
 
@@ -212,9 +206,27 @@ test('deposit / send / withdraw', async function(t) {
   // Bob, however, is already a validator.
   t.is(lc.validators[0].pub_key.value, bobValidatorKey.pub_key.value)
 
-  // Bob the validator wants to become a signatory.
+  // Bob the validator commits to a signatory key.
   let bobWallet = ctx.bobWallet
-  console.log(bobWallet.privkey)
+  await commitPubkey(lc, bobValidatorKey, bobWallet.pubkey)
+  signatoryKeys = await lc.state.bitcoin.signatoryKeys
+  t.deepEqual(signatoryKeys, {
+    [bobValidatorKey.pub_key.value]: bobWallet.pubkey
+  })
+
+  // Alice builds, signs, and sends a deposit transaction to pay to the current signatory set.
+  let utxos = (await ctx.aliceRpc.listUnspent()).map(formatUtxo)
+  let bitcoinDepositTx = deposit.createBitcoinTx(
+    lotionValidators,
+    signatoryKeys,
+    utxos,
+    base58.decode(ctx.aliceWallet.address())
+  )
+  let signedDepositTx = await ctx.aliceRpc.signRawTransactionWithWallet(
+    bitcoinDepositTx.toHex()
+  )
+  await ctx.aliceRpc.sendRawTransaction(signedDepositTx.hex)
+  t.is(await ctx.aliceRpc.getBalance(), 0)
 })
 
 function formatHeader(header) {
@@ -228,5 +240,13 @@ function formatHeader(header) {
     timestamp: header.time,
     bits: parseInt(header.bits, 16),
     nonce: header.nonce
+  }
+}
+
+function formatUtxo(utxo) {
+  return {
+    vout: utxo.vout,
+    txid: Buffer.from(utxo.txid, 'hex').reverse(),
+    value: utxo.amount * 1e8
   }
 }
