@@ -7,7 +7,7 @@ import { BitcoinNetwork, SignatoryMap, ValidatorMap } from './types'
 export function createBitcoinTx(
   validators: ValidatorMap,
   signatoryKeys: SignatoryMap,
-  utxos: bitcoin.TxOutput[],
+  utxos: any,
   destAddress: Buffer,
   network: BitcoinNetwork
 ): bitcoin.Transaction {

@@ -238,6 +238,14 @@ test('deposit / send / withdraw', async function(t) {
   await ctx.relay.step()
   state = await lc.state
   t.is(state.bitcoin.chain.length, 3)
+
+  // Alice has pegged coins!
+  t.is(await ctx.aliceWallet.balance(), 4999990000)
+
+  // Alice sends some coins to Bob.
+  await ctx.aliceWallet.send(ctx.bobWallet.address(), 1e9)
+  t.is(await ctx.aliceWallet.balance(), 3999990000)
+  t.is(await ctx.bobWallet.balance(), 1e9)
 })
 
 function formatHeader(header) {

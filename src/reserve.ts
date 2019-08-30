@@ -126,7 +126,7 @@ export function buildOutgoingTx(
 ) {
   let { inputs, outputs } = signingTx
 
-  let tx = new Transaction()
+  let tx: any = new Transaction()
   let totalAmount = 0
 
   for (let { txid, index, amount } of inputs) {

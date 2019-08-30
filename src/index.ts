@@ -7,7 +7,7 @@ try {
   ed25519 = require('ed25519-supercop')
 } catch (err) {}
 const secp256k1 = require('secp256k1')
-const bitcoin = require('bitcoinjs-lib')
+import * as bitcoin from 'bitcoinjs-lib'
 import {
   createWitnessScript,
   getSignatorySet,
@@ -139,7 +139,6 @@ let bitcoinPeg: any = function(
         throw Error('Transaction does not match proof')
       }
       i += 1
-
       // verify tx format
       // TODO: use a format that supports joining deposits for multiple people
       if (bitcoinTx.outs.length !== 2) {
@@ -302,7 +301,7 @@ let bitcoinPeg: any = function(
       // add change output to our UTXOs
       let txHash = bitcoinTx.getHash()
       let changeIndex = bitcoinTx.outs.length - 1
-      let changeOutput = bitcoinTx.outs[changeIndex]
+      let changeOutput: any = bitcoinTx.outs[changeIndex]
       state.utxos.push({
         txid: txHash,
         index: changeIndex,
