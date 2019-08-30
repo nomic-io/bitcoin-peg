@@ -101,7 +101,7 @@ export class Relay {
       console.log('p2ss address:')
       console.log(p2ssAddress)
       await rpc.importAddress(
-        /*address=*/ p2ss.toString('hex'),
+        /*address=*/ p2ssAddress,
         /*label=*/ '',
         /*rescan=*/ false,
         /*p2sh=*/ false

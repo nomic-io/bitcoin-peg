@@ -214,6 +214,7 @@ test('deposit / send / withdraw', async function(t) {
   t.deepEqual(signatoryKeys, {
     [bobValidatorKey.pub_key.value]: bobWallet.pubkey
   })
+  await ctx.relay.step()
 
   // Alice builds, signs, and sends a deposit transaction to pay to the current signatory set.
   let utxos = (await ctx.aliceRpc.listUnspent()).map(formatUtxo)
@@ -233,7 +234,7 @@ test('deposit / send / withdraw', async function(t) {
 
   // Bob (the validator, signatory, relayer) does a relay step.
   let state = await lc.state
-  t.is(state.bitcoin.chain.length, 1)
+  t.is(state.bitcoin.chain.length, 2)
   await ctx.relay.step()
   state = await lc.state
   t.is(state.bitcoin.chain.length, 3)
