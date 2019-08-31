@@ -51,3 +51,38 @@ export interface SignedTx {
 }
 
 export type SigningTx = SignedTx
+
+export interface Header {
+  height: number
+  version: number
+  prevHash: Buffer
+  merkleRoot: Buffer
+  timestamp: number
+  bits: number
+  nonce: number
+}
+export interface UTXO {
+  txid: Buffer
+  amount: number
+  index: number
+}
+export interface Withdrawal {
+  amount: number
+  script: Buffer
+}
+
+export interface BitcoinPegState {
+  chain: Header[]
+  signatoryKeys: SignatoryMap
+  processedTxs: {
+    [txid: string]: true
+  }
+  utxos: UTXO[]
+  withdrawals: Withdrawal[]
+  signingTx: SigningTx | null
+  signedTx: SignedTx | null
+  prevSignedTx: SignedTx | null
+}
+
+export type BitcoinPegTx = any
+export type BitcoinPegContext = any

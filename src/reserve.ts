@@ -183,6 +183,11 @@ export function createOutput(
 
   return payments.p2wsh({
     redeem: { output: p2ss },
-    network: networks[network]
-  }).output
+    network: networks[network === 'mainnet' ? 'bitcoin' : network]
+  }).output as Buffer
+}
+
+function resolveNetwork(network: string) {
+  if (network === 'mainnet') {
+  }
 }

@@ -1,4 +1,4 @@
-import bmp = require('bitcoin-merkle-proof')
+let bmp = require('bitcoin-merkle-proof')
 import * as bitcoin from 'bitcoinjs-lib'
 
 import * as reserve from './reserve'

@@ -134,7 +134,7 @@ export async function getCurrentP2ssAddress(
 
   let p2ssAddress = bitcoin.payments.p2wsh({
     redeem: { output: p2ss },
-    network: bitcoin.networks[network]
+    network: bitcoin.networks[network === 'mainnet' ? 'bitcoin' : network]
   }).address
   return p2ssAddress
 }

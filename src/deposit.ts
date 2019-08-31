@@ -1,4 +1,3 @@
-'use strict'
 import * as bitcoin from 'bitcoinjs-lib'
 
 import { createOutput } from './reserve'
@@ -38,8 +37,8 @@ export function createBitcoinTx(
   // output that commits to a destination address on the peg chain
   let addressOutput = bitcoin.payments.embed({
     data: [destAddress],
-    network: bitcoin.networks[network]
-  }).output
+    network: bitcoin.networks[network === 'mainnet' ? 'bitcoin' : network]
+  }).output as Buffer
   tx.addOutput(addressOutput, 0)
 
   return tx

@@ -16,7 +16,13 @@ import {
   getVotingPowerThreshold
 } from './reserve'
 
-import { BitcoinNetwork } from './types'
+import {
+  BitcoinNetwork,
+  Header,
+  BitcoinPegState,
+  BitcoinPegTx,
+  BitcoinPegContext
+} from './types'
 // TODO: get this from somewhere else
 const { getTxHash } = require('bitcoin-net/src/utils.js')
 
@@ -27,8 +33,8 @@ const MIN_WITHDRAWAL = 2500 // in satoshis
 const MAX_HEADERS = 4032
 
 let bitcoinPeg: any = function(
-  initialHeader,
-  coinName,
+  initialHeader: Header,
+  coinName: string,
   network: BitcoinNetwork
 ) {
   if (!initialHeader) {
@@ -41,7 +47,7 @@ let bitcoinPeg: any = function(
     throw Error('"coinName" argument is required')
   }
   // TODO: use nested routing for different tx types
-  function initializer(state) {
+  function initializer(state: BitcoinPegState) {
     console.log('called bitcoin peg initializer')
     // bitcoin blockchain headers (so we can SPV-verify txs)
     state.chain = [initialHeader]
@@ -69,7 +75,11 @@ let bitcoinPeg: any = function(
     state.prevSignedTx = null
   }
 
-  function txHandler(state, tx, context) {
+  function txHandler(
+    state: BitcoinPegState,
+    tx: BitcoinPegTx,
+    context: BitcoinPegContext
+  ) {
     if (tx.headers) {
       // headers tx, add headers to chain
       headersTx(state, tx, context)
@@ -89,7 +99,11 @@ let bitcoinPeg: any = function(
 
   // headers being relayed to this chain,
   // verify and add to state
-  function headersTx(state, tx, context) {
+  function headersTx(
+    state: BitcoinPegState,
+    tx: BitcoinPegTx,
+    context: BitcoinPegContext
+  ) {
     let chain = Blockchain({
       network,
       store: state.chain
@@ -107,7 +121,11 @@ let bitcoinPeg: any = function(
   // deposit transaction(s) being relayed to this chain,
   // verify merkle proof against a block header (SPV).
   // then mint new coins to the recipient
-  function depositTx(state, tx, context) {
+  function depositTx(
+    state: BitcoinPegState,
+    tx: BitcoinPegTx,
+    context: BitcoinPegContext
+  ) {
     // get specified block header from state
     // TODO: make this into a static blockchain-spv function
     let chain = Blockchain({ store: state.chain })
@@ -121,7 +139,7 @@ let bitcoinPeg: any = function(
     let i = 0
     for (let txBytes of tx.transactions) {
       // decode transaction
-      let bitcoinTx = protocol.types.transaction.decode(txBytes)
+      let bitcoinTx: Transaction = protocol.types.transaction.decode(txBytes)
 
       // get hash of tx
       let txid = getTxHash(bitcoinTx)
@@ -150,16 +168,22 @@ let bitcoinPeg: any = function(
         state.signatoryKeys,
         network
       )
-      let depositOutput = bitcoinTx.outs[0]
+      let depositOutput: any = bitcoinTx.outs[0]
       if (!depositOutput.script.equals(expectedP2ss)) {
         throw Error('Invalid deposit output')
       }
       // verify second output commits to recipient address
-      let addressHash = bitcoin.payments.embed({
-        output: bitcoinTx.outs[1].script
-      }).data[0]
-      if (addressHash.length !== 20) {
-        console.log(addressHash)
+      let secondOutput = bitcoinTx.outs[1]
+      let { data } = bitcoin.payments.embed({
+        output: secondOutput.script
+      })
+      if (typeof data === 'undefined') {
+        throw new Error(
+          'Second output of Bitcoin tx should commit to coins address'
+        )
+      }
+      let addressHash = data[0]
+      if (!addressHash || addressHash.length !== 20) {
         throw Error('Invalid recipient address commitment output')
       }
 
@@ -192,7 +216,11 @@ let bitcoinPeg: any = function(
   // signatory key commitment, signed by a validator who is in the signatory
   // set. we have to do this because tendermint validators use ed25519 keys,
   // while for bitcoin we need secp256k1 keys.
-  function signatoryKeyTx(state, tx, context) {
+  function signatoryKeyTx(
+    state: BitcoinPegState,
+    tx: BitcoinPegTx,
+    context: BitcoinPegContext
+  ) {
     let { signatoryIndex, signatoryKey, signature } = tx
 
     if (!Number.isInteger(signatoryIndex)) {
@@ -226,7 +254,11 @@ let bitcoinPeg: any = function(
   }
 
   // signature tx, add signatory's sig to outgoing transaction
-  function signatureTx(state, tx, context) {
+  function signatureTx(
+    state: BitcoinPegState,
+    tx: BitcoinPegTx,
+    context: BitcoinPegContext
+  ) {
     let { signatoryIndex, signatures } = tx
     let { signingTx, signatoryKeys } = state
 
@@ -311,7 +343,7 @@ let bitcoinPeg: any = function(
   }
 
   // runs at the end of each block
-  function blockHandler(state, context) {
+  function blockHandler(state: BitcoinPegState, context: BitcoinPegContext) {
     // TODO: in the future we won't disburse every time there is a withdrawal,
     //       we will wait until we're ready to make a checkpoint (e.g. a few
     //       times a day or when the signatory set has changed)
@@ -338,7 +370,7 @@ let bitcoinPeg: any = function(
     blockHandlers: [blockHandler],
 
     methods: {
-      addWithdrawal(state, amount, script) {
+      addWithdrawal(state: BitcoinPegState, amount: number, script: Buffer) {
         if (!Number.isSafeInteger(amount)) {
           throw Error('Amount must be an integer')
         }
@@ -357,9 +389,13 @@ let bitcoinPeg: any = function(
 bitcoinPeg.coinsHandler = function coinsHandler(routeName: string) {
   // handle withdrawals
   return {
-    onOutput({ amount, script }, state, context) {
+    onOutput(
+      output: { amount: number; script: Buffer },
+      state: BitcoinPegState,
+      context: BitcoinPegContext
+    ) {
       let btc = context.modules[routeName]
-      btc.addWithdrawal(amount, script)
+      btc.addWithdrawal(output.amount, output.script)
     }
   }
 }
@@ -368,6 +404,7 @@ import * as relay from './relay'
 bitcoinPeg.relay = relay
 
 import * as deposit from './deposit'
+import { Transaction } from 'bitcoinjs-lib'
 bitcoinPeg.deposit = deposit
 
 export = bitcoinPeg
