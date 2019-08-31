@@ -1,3 +1,5 @@
+import { Output, Input } from 'bitcoinjs-lib/types/transaction'
+
 /**
  * Lotion-style map of validator public key to voting power.
  */
@@ -30,3 +32,22 @@ export interface ValidatorKey {
   }
   address?: string
 }
+
+export interface TxInput {
+  txid: Buffer
+  index: number
+  amount: number
+}
+export interface TxOutput {
+  amount: number
+  script: Buffer
+}
+
+export interface SignedTx {
+  inputs: TxInput[]
+  outputs: TxOutput[]
+  signedVotingPower: number
+  signatures: Array<Array<Buffer>>
+}
+
+export type SigningTx = SignedTx

@@ -35,7 +35,12 @@ import ed = require('ed25519-supercop')
 import secp = require('secp256k1')
 let randomBytes = seed('seed')
 let base58 = require('bs58check')
-import { ValidatorMap, ValidatorKey, SignatoryMap } from '../src/types'
+import {
+  ValidatorMap,
+  ValidatorKey,
+  SignatoryMap,
+  SignedTx
+} from '../src/types'
 
 let bobValidatorKey: ValidatorKey = JSON.parse(genValidator()).Key
 
@@ -47,7 +52,6 @@ async function makeBitcoind(t) {
   let rpcport = await getPort()
   let port = await getPort()
   let dataPath = join(tmpdir(), Math.random().toString(36) + rpcport + port)
-  console.log('data path:' + dataPath)
   mkdirSync(dataPath)
   let bitcoind = createBitcoind({
     rpcport,
@@ -145,9 +149,7 @@ function makeLotionApp(trustedBtcHeader) {
 test.beforeEach(async function(t) {
   let btcd = await makeBitcoind(t)
   t.context.bitcoind = btcd
-  let genesisHash = await btcd.rpc.getBlockHash(0) //?.
 
-  let genesisBlock = await btcd.rpc.getBlock(genesisHash) //?.
   let generated = await t.context.minerRpc.generateToAddress(
     2016,
     await t.context.minerRpc.getNewAddress()
@@ -246,6 +248,27 @@ test('deposit / send / withdraw', async function(t) {
   await ctx.aliceWallet.send(ctx.bobWallet.address(), 1e9)
   t.is(await ctx.aliceWallet.balance(), 3999990000)
   t.is(await ctx.bobWallet.balance(), 1e9)
+
+  // Bob wants to withdraw some of the pegged Bitcoin he received.
+  // Bob submits a withdrawal transaction.
+  let signingTx = await lc.state.bitcoin.signingTx
+  t.is(signingTx, null)
+  await ctx.bobWallet.send({
+    type: 'bitcoin',
+    amount: 5e8,
+    script: Buffer.from([1, 2, 3, 4])
+  })
+  signingTx = await lc.state.bitcoin.signingTx
+  t.is(signingTx.outputs[0].amount, 5e8)
+  t.is(signingTx.signatures.length, 0)
+
+  // Bob adds his signature to the disbursal transaction.
+  await signDisbursal(lc, ctx.bobWallet.privkey, 'regtest')
+  signingTx = await lc.state.bitcoin.signingTx
+  t.is(signingTx, null)
+  let signedTx: SignedTx | null = await lc.state.bitcoin.signedTx
+
+  await ctx.relay.step()
 })
 
 function formatHeader(header) {

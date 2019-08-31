@@ -373,7 +373,6 @@ function getChainOpts(network: BitcoinNetwork) {
   } else if (network === 'regtest') {
     return {
       noRetargeting: true
-      // allowMinDifficultyBlocks: true
     }
   } else if (network === 'mainnet') {
     return {}

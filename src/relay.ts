@@ -1,14 +1,15 @@
 import bmp = require('bitcoin-merkle-proof')
+import * as bitcoin from 'bitcoinjs-lib'
 
+import * as reserve from './reserve'
 import {
-  getSignatoryScriptHashFromPegZone,
-  getCurrentP2ssAddress
+  getCurrentP2ssAddress,
+  getSignatoryScriptHashFromPegZone
 } from './signatory'
-import { BitcoinNetwork } from './types'
+import { BitcoinNetwork, SignatoryMap, SignedTx, ValidatorMap } from './types'
 
 let encodeBitcoinTx = require('bitcoin-protocol').types.transaction.encode
 let decodeBitcoinTx = require('bitcoin-protocol').types.transaction.decode
-let bitcoin = require('bitcoinjs-lib')
 let { getTxHash, getBlockHash } = require('bitcoin-net/src/utils.js')
 
 interface RelayOptions {
@@ -94,80 +95,83 @@ export class Relay {
   async step() {
     let rpc = this.bitcoinRPC
     let lc = this.lotionLightClient
-    try {
-      let p2ss = await getSignatoryScriptHashFromPegZone(lc)
-      let p2ssAddress = await getCurrentP2ssAddress(lc, this.network)
-      console.log(p2ss)
-      console.log('p2ss address:')
-      console.log(p2ssAddress)
-      await rpc.importAddress(
-        /*address=*/ p2ssAddress,
-        /*label=*/ '',
-        /*rescan=*/ false,
-        /*p2sh=*/ false
+    let p2ss = await getSignatoryScriptHashFromPegZone(lc)
+    let p2ssAddress = await getCurrentP2ssAddress(lc, this.network)
+    await rpc.importAddress(
+      /*address=*/ p2ssAddress,
+      /*label=*/ '',
+      /*rescan=*/ false,
+      /*p2sh=*/ false
+    )
+    // Relay any headers not yet seen by the peg chain.
+    let pegChainHeaders = await lc.state.bitcoin.chain
+    let pegChainProcessedTxs = await lc.state.bitcoin.processedTxs
+    await this.relayHeaders(pegChainHeaders)
+    // Check for Bitcoin deposits
+
+    let allReceivedDepositTxs = await rpc.listTransactions('*', 1e9, 0, true)
+    let depositsToRelay = allReceivedDepositTxs.filter(
+      tx =>
+        tx.address === p2ssAddress &&
+        tx.category === 'receive' &&
+        typeof tx.blockhash === 'string' &&
+        !pegChainProcessedTxs[tx.txid]
+    )
+    let pegChainDepositTxs = []
+    for (let i = 0; i < depositsToRelay.length; i++) {
+      const VERBOSITY = 2
+      let depositTx = depositsToRelay[i]
+      let blockContainingDepositTx = await rpc.getBlock(
+        depositTx.blockhash,
+        VERBOSITY
       )
-      // Relay any headers not yet seen by the peg chain.
-      let pegChainHeaders = await lc.state.bitcoin.chain
-      let pegChainProcessedTxs = await lc.state.bitcoin.processedTxs
-      console.log('relaying headers')
-      await this.relayHeaders(pegChainHeaders)
-      console.log('relayed headers.')
-      // Check for Bitcoin deposits
+      let txHashesInBlock = blockContainingDepositTx.tx.map(tx => {
+        return Buffer.from(tx.txid, 'hex').reverse()
+      })
+      let txHashesInBlockToIncludeInProof = [
+        Buffer.from(depositTx.txid, 'hex').reverse()
+      ]
+      let proof = bmp.build({
+        hashes: txHashesInBlock,
+        include: txHashesInBlockToIncludeInProof
+      })
+      let pegChainDepositTx = {
+        type: 'bitcoin',
+        height: blockContainingDepositTx.height,
+        proof,
+        transactions: blockContainingDepositTx.tx
+          .filter(tx => tx.txid === depositTx.txid)
+          .filter(tx => {
+            let txid = getTxHash(
+              decodeBitcoinTx(Buffer.from(tx.hex, 'hex'))
+            ).toString('hex')
 
-      let allReceivedDepositTxs = await rpc.listTransactions('*', 1e9, 0, true)
-      let depositsToRelay = allReceivedDepositTxs.filter(
-        tx =>
-          tx.address === p2ssAddress &&
-          tx.category === 'receive' &&
-          typeof tx.blockhash === 'string' &&
-          !pegChainProcessedTxs[tx.txid]
+            return pegChainProcessedTxs[txid] !== true
+          })
+          .map(tx => {
+            return Buffer.from(tx.hex, 'hex')
+          })
+      }
+      pegChainDepositTxs.push(pegChainDepositTx)
+    }
+
+    // Now check for a completed transaction on the peg zone.
+    let signedTx: SignedTx | null = await lc.state.bitcoin.signedTx
+    if (signedTx) {
+      let validators = convertValidatorsToLotion(lc.validators)
+      let signatoryKeys: SignatoryMap = await lc.state.bitcoin.signatoryKeys
+      let finalizedTx = buildDisbursalTransaction(
+        signedTx,
+        validators,
+        signatoryKeys,
+        this.network
       )
-      let pegChainDepositTxs = []
-      for (let i = 0; i < depositsToRelay.length; i++) {
-        const VERBOSITY = 2
-        let depositTx = depositsToRelay[i]
-        let blockContainingDepositTx = await rpc.getBlock(
-          depositTx.blockhash,
-          VERBOSITY
-        )
-        let txHashesInBlock = blockContainingDepositTx.tx.map(tx => {
-          return Buffer.from(tx.txid, 'hex').reverse()
-        })
-        let txHashesInBlockToIncludeInProof = [
-          Buffer.from(depositTx.txid, 'hex').reverse()
-        ]
-        let proof = bmp.build({
-          hashes: txHashesInBlock,
-          include: txHashesInBlockToIncludeInProof
-        })
-        let pegChainDepositTx = {
-          type: 'bitcoin',
-          height: blockContainingDepositTx.height,
-          proof,
-          transactions: blockContainingDepositTx.tx
-            .filter(tx => tx.txid === depositTx.txid)
-            .filter(tx => {
-              let txid = getTxHash(
-                decodeBitcoinTx(Buffer.from(tx.hex, 'hex'))
-              ).toString('hex')
-
-              return pegChainProcessedTxs[txid] !== true
-            })
-            .map(tx => {
-              return Buffer.from(tx.hex, 'hex')
-            })
-        }
-        pegChainDepositTxs.push(pegChainDepositTx)
-      }
-
-      // Relay deposit transactions to the peg chain
-      for (let i = 0; i < pegChainDepositTxs.length; i++) {
-        let result = await lc.send(pegChainDepositTxs[i])
-      }
-      console.log('reached end of relayer.step()')
-    } catch (e) {
-      console.log('error during relay:')
-      console.log(e)
+      console.log(finalizedTx)
+    }
+    // TODO: not properly tracking processed transactions on state.
+    // Relay deposit transactions to the peg chain
+    for (let i = 0; i < pegChainDepositTxs.length; i++) {
+      let result = await lc.send(pegChainDepositTxs[i])
     }
   }
 }
@@ -194,9 +198,51 @@ function delay(ms = 1000) {
   })
 }
 
-export function convertValidatorsToLotion(validators) {
+export function convertValidatorsToLotion(validators): ValidatorMap {
   return validators.reduce((obj, v) => {
     obj[v.pub_key.value] = v.voting_power
     return obj
   }, {})
+}
+
+// TODO: build the 3 separate transactions as outlined in the design document
+function buildDisbursalTransaction(
+  signedTx: SignedTx,
+  validators: ValidatorMap,
+  signatoryKeys: SignatoryMap,
+  network: BitcoinNetwork
+) {
+  // build tx
+  let tx = reserve.buildOutgoingTx(signedTx, validators, signatoryKeys, network)
+
+  // insert signatory set's signatures as p2wsh witness
+  let redeemScript = reserve.createWitnessScript(validators, signatoryKeys)
+  console.log(tx)
+  console.log(signedTx)
+  for (let i = 0; i < tx.ins.length; i++) {
+    let signatures = getSignatures(signedTx.signatures, i)
+    let scriptSig = reserve.createScriptSig(signatures)
+    let p2wsh = bitcoin.payments.p2wsh({
+      redeem: {
+        input: scriptSig,
+        output: redeemScript
+      }
+    })
+    tx.setWitness(i, p2wsh.witness)
+  }
+
+  return tx
+}
+/**
+ * Gets the signatures for the given input index from the
+ * peg network's signedTx state object as hex
+ */
+function getSignatures(signatures: SignedTx['signatures'], index: number) {
+  let result: string[] = []
+  for (let i = 0; i < signatures.length; i++) {
+    result.push(
+      signatures[i] ? signatures[i][index].toString('hex') + '01' : null
+    ) // SIGHASH_ALL
+  }
+  return result
 }

@@ -1,5 +1,12 @@
-import { script, Transaction, payments, networks } from 'bitcoinjs-lib'
-import { ValidatorMap, SignatoryMap, BitcoinNetwork } from './types'
+import {
+  networks,
+  payments,
+  script,
+  Transaction,
+  TxOutput
+} from 'bitcoinjs-lib'
+
+import { BitcoinNetwork, SignatoryMap, SigningTx, ValidatorMap } from './types'
 
 const MAX_SIGNATORIES = 76
 const MIN_RELAY_FEE = 1000
@@ -82,7 +89,8 @@ export function createWitnessScript(
   return script.fromASM(trim(asm))
 }
 
-export function createScriptSig(signatures) {
+export function createScriptSig(signatures: string[]) {
+  console.log(signatures)
   let asm = signatures
     .map(signature)
     .reverse()
@@ -119,14 +127,14 @@ export function getSignatorySet(validators: ValidatorMap) {
 }
 
 export function buildOutgoingTx(
-  signingTx,
+  signingTx: SigningTx,
   validators: ValidatorMap,
   signatoryKeys: SignatoryMap,
   network: BitcoinNetwork
 ) {
   let { inputs, outputs } = signingTx
-
-  let tx: any = new Transaction()
+  console.log(inputs)
+  let tx = new Transaction()
   let totalAmount = 0
 
   for (let { txid, index, amount } of inputs) {
@@ -155,13 +163,13 @@ export function buildOutgoingTx(
   // TODO: adjust fee amount
   let feeAmountPerWithdrawal = Math.ceil(feeAmount / outputs.length)
   for (let i = 0; i < outputs.length; i++) {
-    tx.outs[i].value -= feeAmountPerWithdrawal
-    if (tx.outs[i].value <= 0) {
+    let out: TxOutput = tx.outs[i] as TxOutput
+    out.value -= feeAmountPerWithdrawal
+    if (out.value <= 0) {
       // TODO: remove this output and start fee paying process over
       throw Error('Output is not large enough to pay fee')
     }
   }
-
   return tx
 }
 

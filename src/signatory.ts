@@ -1,5 +1,3 @@
-'use strict'
-
 import { createHash } from 'crypto'
 import ed = require('ed25519-supercop')
 import secp = require('secp256k1')
