@@ -84,7 +84,6 @@ export class Relay {
         type: 'bitcoin',
         headers: headers.slice(i, i + 100)
       })
-      console.log(result)
     }
   }
   /**
@@ -166,7 +165,6 @@ export class Relay {
         signatoryKeys,
         this.network
       )
-      console.log(finalizedTx)
     }
     // TODO: not properly tracking processed transactions on state.
     // Relay deposit transactions to the peg chain
@@ -190,14 +188,6 @@ function formatHeader(header) {
   }
 }
 
-function delay(ms = 1000) {
-  return new Promise((resolve, reject) => {
-    setTimeout(function() {
-      resolve()
-    }, ms)
-  })
-}
-
 export function convertValidatorsToLotion(validators): ValidatorMap {
   return validators.reduce((obj, v) => {
     obj[v.pub_key.value] = v.voting_power
@@ -217,8 +207,6 @@ function buildDisbursalTransaction(
 
   // insert signatory set's signatures as p2wsh witness
   let redeemScript = reserve.createWitnessScript(validators, signatoryKeys)
-  console.log(tx)
-  console.log(signedTx)
   for (let i = 0; i < tx.ins.length; i++) {
     let signatures = getSignatures(signedTx.signatures, i)
     let scriptSig = reserve.createScriptSig(signatures)

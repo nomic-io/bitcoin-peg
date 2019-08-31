@@ -21,12 +21,7 @@ import { tmpdir } from 'os'
 let { mkdirSync, remove } = require('fs-extra')
 import { join } from 'path'
 import getPort = require('get-port')
-import {
-  buildSignatoryCommitmentTx,
-  commitPubkey,
-  signDisbursal,
-  getCurrentP2ssAddress
-} from '../src/signatory'
+import { commitPubkey, signDisbursal } from '../src/signatory'
 import * as seed from 'random-bytes-seed'
 import { Relay } from '../src/relay'
 let RPCClient = require('bitcoin-core')

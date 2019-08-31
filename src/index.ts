@@ -40,7 +40,6 @@ let bitcoinPeg: any = function(
   if (!coinName) {
     throw Error('"coinName" argument is required')
   }
-  let chainOpts = getChainOpts(network)
   // TODO: use nested routing for different tx types
   function initializer(state) {
     console.log('called bitcoin peg initializer')
@@ -362,20 +361,6 @@ bitcoinPeg.coinsHandler = function coinsHandler(routeName: string) {
       let btc = context.modules[routeName]
       btc.addWithdrawal(amount, script)
     }
-  }
-}
-
-function getChainOpts(network: BitcoinNetwork) {
-  if (network === 'testnet') {
-    return {
-      allowMinDifficultyBlocks: true
-    }
-  } else if (network === 'regtest') {
-    return {
-      noRetargeting: true
-    }
-  } else if (network === 'mainnet') {
-    return {}
   }
 }
 

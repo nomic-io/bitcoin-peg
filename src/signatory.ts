@@ -46,38 +46,6 @@ export async function commitPubkey(
   )
 }
 
-export function buildSignatoryCommitmentTx(
-  validators: ValidatorMap,
-  privValidator: ValidatorKey,
-  signatoryPub: Buffer
-) {
-  if (!secp.publicKeyVerify(signatoryPub)) {
-    throw Error('Invalid signatory public key')
-  }
-
-  // locate our validator key in validators array
-  let signatorySet = getSignatorySet(validators)
-  let signatoryIndex
-  for (let i = 0; i < signatorySet.length; i++) {
-    let signatory = signatorySet[i]
-    if (signatory.validatorKey === privValidator.pub_key.value) {
-      signatoryIndex = i
-      break
-    }
-  }
-  if (signatoryIndex == null) {
-    throw Error('Given validator key not found in validator set')
-  }
-  let signature = ed25519Sign(privValidator, signatoryPub)
-
-  return {
-    type: 'bitcoin',
-    signatoryIndex,
-    signatoryKey: signatoryPub,
-    signature
-  }
-}
-
 export async function signDisbursal(
   client,
   signatoryPriv,

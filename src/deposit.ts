@@ -44,8 +44,3 @@ export function createBitcoinTx(
 
   return tx
 }
-
-interface LotionDepositTx {}
-export function createLotionTx(signedBtcTx): LotionDepositTx {
-  return {}
-}
