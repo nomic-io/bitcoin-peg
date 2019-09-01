@@ -6,14 +6,24 @@ import {
   getCurrentP2ssAddress,
   getSignatoryScriptHashFromPegZone
 } from './signatory'
-import { BitcoinNetwork, SignatoryMap, SignedTx, ValidatorMap } from './types'
+import {
+  BitcoinNetwork,
+  SignatoryMap,
+  SignedTx,
+  ValidatorMap,
+  Header,
+  BitcoinRPC,
+  RPCHeader,
+  LightClient
+} from './types'
+import { p2sh } from 'bitcoinjs-lib/types/payments'
 
 let encodeBitcoinTx = require('bitcoin-protocol').types.transaction.encode
 let decodeBitcoinTx = require('bitcoin-protocol').types.transaction.decode
 let { getTxHash, getBlockHash } = require('bitcoin-net/src/utils.js')
 
 interface RelayOptions {
-  bitcoinRPC: any
+  bitcoinRPC: BitcoinRPC
   lotionLightClient: any
   network: BitcoinNetwork
 }
@@ -30,7 +40,7 @@ interface RelayOptions {
  *
  */
 export class Relay {
-  private bitcoinRPC: any
+  private bitcoinRPC: BitcoinRPC
   private lotionLightClient: any
   private network: BitcoinNetwork
 
@@ -40,7 +50,7 @@ export class Relay {
     this.network = relayOpts.network
   }
 
-  async relayHeaders(pegChainHeaders) {
+  async relayHeaders(pegChainHeaders: Header[]) {
     let rpc = this.bitcoinRPC
     // Compute common ancestor
     let commonHeaderHash
@@ -174,7 +184,7 @@ export class Relay {
   }
 }
 
-function formatHeader(header) {
+function formatHeader(header: RPCHeader) {
   return {
     height: Number(header.height),
     version: Number(header.version),
@@ -188,8 +198,10 @@ function formatHeader(header) {
   }
 }
 
-export function convertValidatorsToLotion(validators): ValidatorMap {
-  return validators.reduce((obj, v) => {
+export function convertValidatorsToLotion(
+  validators: LightClient['validators']
+): ValidatorMap {
+  return validators.reduce((obj: ValidatorMap, v) => {
     obj[v.pub_key.value] = v.voting_power
     return obj
   }, {})
@@ -216,7 +228,9 @@ function buildDisbursalTransaction(
         output: redeemScript
       }
     })
-    tx.setWitness(i, p2wsh.witness)
+    if (p2wsh.witness) {
+      tx.setWitness(i, p2wsh.witness)
+    }
   }
 
   return tx
@@ -228,9 +242,7 @@ function buildDisbursalTransaction(
 function getSignatures(signatures: SignedTx['signatures'], index: number) {
   let result: string[] = []
   for (let i = 0; i < signatures.length; i++) {
-    result.push(
-      signatures[i] ? signatures[i][index].toString('hex') + '01' : null
-    ) // SIGHASH_ALL
+    result.push(signatures[i][index].toString('hex') + '01') // SIGHASH_ALL
   }
   return result
 }

@@ -14,27 +14,28 @@ let test = anyTest as TestInterface<{
   aliceWallet: any
   bobWallet: any
 }>
-import * as coins from 'coins'
-import lotion = require('lotion-mock')
-import createBitcoind = require('bitcoind')
+let coins = require('coins')
+let lotion = require('lotion-mock')
+let createBitcoind = require('bitcoind')
 import { tmpdir } from 'os'
 let { mkdirSync, remove } = require('fs-extra')
 import { join } from 'path'
 import getPort = require('get-port')
 import { commitPubkey, signDisbursal } from '../src/signatory'
-import * as seed from 'random-bytes-seed'
+let seed = require('random-bytes-seed')
 import { Relay } from '../src/relay'
 let RPCClient = require('bitcoin-core')
 let { genValidator } = require('tendermint-node')
-import ed = require('ed25519-supercop')
-import secp = require('secp256k1')
+let ed = require('ed25519-supercop')
+let secp = require('secp256k1')
 let randomBytes = seed('seed')
 let base58 = require('bs58check')
 import {
   ValidatorMap,
   ValidatorKey,
   SignatoryMap,
-  SignedTx
+  SignedTx,
+  RPCHeader
 } from '../src/types'
 
 let bobValidatorKey: ValidatorKey = JSON.parse(genValidator()).Key
@@ -43,7 +44,7 @@ let lotionValidators: ValidatorMap = {
   [bobValidatorKey.pub_key.value]: 10
 }
 
-async function makeBitcoind(t) {
+async function makeBitcoind(t: any) {
   let rpcport = await getPort()
   let port = await getPort()
   let dataPath = join(tmpdir(), Math.random().toString(36) + rpcport + port)
@@ -105,25 +106,25 @@ async function makeBitcoind(t) {
   return { rpc: bitcoind.rpc, port, rpcport, node: bitcoind, dataPath }
 }
 
-function makeCoinsWallets(t) {
+function makeCoinsWallets(t: any) {
   let lc = t.context.lightClient
   t.context.aliceWallet = coins.wallet(randomBytes(32), lc, { route: 'mycoin' })
   t.context.bobWallet = coins.wallet(randomBytes(32), lc, { route: 'mycoin' })
 }
 
-function makeLotionApp(trustedBtcHeader) {
+function makeLotionApp(trustedBtcHeader: RPCHeader) {
   let trustedHeader = formatHeader(trustedBtcHeader)
   let app = lotion({
     initialState: {}
   })
 
-  app.use(function(state, tx, context) {
+  app.use(function(state: any, tx: any, context: any) {
     context.validators = lotionValidators
   })
-  app.useBlock(function(state, context) {
+  app.useBlock(function(state: any, context: any) {
     context.validators = lotionValidators
   })
-  app.useInitializer(function(state, context) {
+  app.useInitializer(function(state: any, context: any) {
     context.validators = lotionValidators
   })
 
@@ -212,7 +213,8 @@ test('deposit / send / withdraw', async function(t) {
     [bobValidatorKey.pub_key.value]: bobWallet.pubkey
   })
   await ctx.relay.step()
-
+  let btcState = await lc.state.bitcoin
+  console.log(btcState)
   // Alice builds, signs, and sends a deposit transaction to pay to the current signatory set.
   let utxos = (await ctx.aliceRpc.listUnspent()).map(formatUtxo)
   let bitcoinDepositTx = deposit.createBitcoinTx(
@@ -266,7 +268,7 @@ test('deposit / send / withdraw', async function(t) {
   await ctx.relay.step()
 })
 
-function formatHeader(header) {
+function formatHeader(header: RPCHeader) {
   return {
     height: header.height,
     version: header.version,
@@ -280,7 +282,7 @@ function formatHeader(header) {
   }
 }
 
-function formatUtxo(utxo) {
+function formatUtxo(utxo: { vout: any; txid: string; amount: number }) {
   return {
     vout: utxo.vout,
     txid: Buffer.from(utxo.txid, 'hex').reverse(),

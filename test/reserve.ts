@@ -4,7 +4,7 @@ import {
   createWitnessScript,
   buildOutgoingTx
 } from '../src/reserve'
-import * as seed from 'random-bytes-seed'
+let seed = require('random-bytes-seed')
 let randomBytes = seed('seed')
 
 const validatorMap = {

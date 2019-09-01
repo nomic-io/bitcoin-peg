@@ -11,7 +11,7 @@ import { BitcoinNetwork, SignatoryMap, SigningTx, ValidatorMap } from './types'
 const MAX_SIGNATORIES = 76
 const MIN_RELAY_FEE = 1000
 
-const firstSignatory = signatory => {
+const firstSignatory = (signatory: { votingPower: number; pubkey: string }) => {
   return `
   ${signatory.pubkey} OP_CHECKSIG
   OP_IF
@@ -21,25 +21,25 @@ const firstSignatory = signatory => {
   OP_ENDIF
 `
 }
-const nthSignatory = ({ pubkey, votingPower }) => `
+const nthSignatory = (signatory: { pubkey: string; votingPower: number }) => `
   OP_SWAP
-    ${pubkey} OP_CHECKSIG
+    ${signatory.pubkey} OP_CHECKSIG
   OP_IF
-    ${uint(votingPower)}
+    ${uint(signatory.votingPower)}
     OP_ADD
   OP_ENDIF
 `
 
-const compare = threshold => `
+const compare = (threshold: number) => `
   ${uint(threshold)}
   OP_GREATERTHAN
 `
 
-function signature(signature) {
+function signature(signature: string) {
   return signature || 'OP_0'
 }
 
-function uint(n) {
+function uint(n: number) {
   n = Number(n)
   if (!Number.isInteger(n)) {
     throw Error('Number must be an integer')
@@ -54,7 +54,9 @@ function uint(n) {
   return nHex
 }
 
-export function getVotingPowerThreshold(signatories) {
+export function getVotingPowerThreshold(
+  signatories: { votingPower: number }[]
+) {
   let totalVotingPower = signatories.reduce((sum, s) => sum + s.votingPower, 0)
   let twoThirdsVotingPower = Math.ceil((totalVotingPower * 2) / 3)
   return twoThirdsVotingPower
@@ -65,13 +67,13 @@ export function createWitnessScript(
   signatoryKeys: SignatoryMap
 ) {
   // get signatory key for each signatory
-  let signatories = getSignatorySet(validators)
+  let signatories: { pubkey: string; votingPower: number }[] = getSignatorySet(
+    validators
+  )
     .map(({ validatorKey, votingPower }) => {
       let pubkeyHex
       let pubkeyBytes: Buffer = signatoryKeys[validatorKey]
-      if (pubkeyBytes) {
-        pubkeyHex = pubkeyBytes.toString('hex')
-      }
+      pubkeyHex = pubkeyBytes.toString('hex')
       return { pubkey: pubkeyHex, votingPower }
     })
     .filter(s => s.pubkey != null)
@@ -90,7 +92,6 @@ export function createWitnessScript(
 }
 
 export function createScriptSig(signatures: string[]) {
-  console.log(signatures)
   let asm = signatures
     .map(signature)
     .reverse()
@@ -99,7 +100,7 @@ export function createScriptSig(signatures: string[]) {
   return script.fromASM(trim(asm))
 }
 
-function trim(s) {
+function trim(s: string) {
   return s
     .split(/\s/g)
     .filter(s => !!s)

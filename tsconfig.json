@@ -4,7 +4,8 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "target": "es5",
-    "lib": ["esnext"]
+    "lib": ["esnext"],
+    "strict": true
   },
   "include": ["src/", "test/"]
 }
