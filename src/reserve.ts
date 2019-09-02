@@ -187,8 +187,3 @@ export function createOutput(
     network: networks[network === 'mainnet' ? 'bitcoin' : network]
   }).output as Buffer
 }
-
-function resolveNetwork(network: string) {
-  if (network === 'mainnet') {
-  }
-}

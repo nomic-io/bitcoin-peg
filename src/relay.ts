@@ -175,6 +175,7 @@ export class Relay {
         signatoryKeys,
         this.network
       )
+      let result = await rpc.sendRawTransaction(finalizedTx.toHex())
     }
     // TODO: not properly tracking processed transactions on state.
     // Relay deposit transactions to the peg chain

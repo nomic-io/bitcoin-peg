@@ -24,6 +24,7 @@ import getPort = require('get-port')
 import { commitPubkey, signDisbursal } from '../src/signatory'
 let seed = require('random-bytes-seed')
 import { Relay } from '../src/relay'
+import * as bitcoin from 'bitcoinjs-lib'
 let RPCClient = require('bitcoin-core')
 let { genValidator } = require('tendermint-node')
 let ed = require('ed25519-supercop')
@@ -250,10 +251,15 @@ test('deposit / send / withdraw', async function(t) {
   // Bob submits a withdrawal transaction.
   let signingTx = await lc.state.bitcoin.signingTx
   t.is(signingTx, null)
+  let bobBtcAddress = await ctx.bobRpc.getNewAddress()
+  let outputScript = bitcoin.address.toOutputScript(
+    bobBtcAddress,
+    bitcoin.networks.regtest
+  )
   await ctx.bobWallet.send({
     type: 'bitcoin',
     amount: 5e8,
-    script: Buffer.from([1, 2, 3, 4])
+    script: outputScript
   })
   signingTx = await lc.state.bitcoin.signingTx
   t.is(signingTx.outputs[0].amount, 5e8)
@@ -265,7 +271,13 @@ test('deposit / send / withdraw', async function(t) {
   t.is(signingTx, null)
   let signedTx: SignedTx | null = await lc.state.bitcoin.signedTx
 
+  // The signed tx gets broadcast to the Bitcoin network by the relayer:
   await ctx.relay.step()
+  await ctx.minerRpc.generateToAddress(1, minerBtcAddress)
+
+  // Now bob has some Bitcoin.
+  let bobBtcBalance = await ctx.bobRpc.getBalance()
+  t.is(bobBtcBalance, 4.99999)
 })
 
 function formatHeader(header: RPCHeader) {

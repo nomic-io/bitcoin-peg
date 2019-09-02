@@ -185,4 +185,6 @@ export interface BitcoinRPC {
     rescan?: boolean,
     p2sh?: boolean
   ): void
+
+  sendRawTransaction(txHex: string): string
 }
