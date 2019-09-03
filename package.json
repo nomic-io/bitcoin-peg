@@ -43,8 +43,9 @@
     "webcoin": "^3.1.0"
   },
   "scripts": {
-    "pretest": "tsc",
-    "test": "nyc ava dist/test/*.js && nyc report > coverage.lcov"
+    "pretest": "tsc -p .",
+    "test": "nyc ava dist/test/*.js",
+    "posttest": "nyc report --reporter=json > coverage.lcov"
   },
   "repository": {
     "type": "git",
