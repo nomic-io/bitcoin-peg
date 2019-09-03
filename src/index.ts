@@ -21,7 +21,15 @@ import {
   Header,
   BitcoinPegState,
   BitcoinPegTx,
-  BitcoinPegContext
+  BitcoinPegContext,
+  BitcoinPegHeadersTx,
+  isHeadersTx,
+  isDepositTx,
+  BitcoinPegSignatoryCommitmentTx,
+  isSignatoryCommitmentTx,
+  isSignatureTx,
+  BitcoinPegSignatureTx,
+  BitcoinPegDepositTx
 } from './types'
 // TODO: get this from somewhere else
 const { getTxHash } = require('bitcoin-net/src/utils.js')
@@ -80,16 +88,16 @@ let bitcoinPeg: any = function(
     tx: BitcoinPegTx,
     context: BitcoinPegContext
   ) {
-    if (tx.headers) {
+    if (isHeadersTx(tx)) {
       // headers tx, add headers to chain
       headersTx(state, tx, context)
-    } else if (tx.transactions) {
+    } else if (isDepositTx(tx)) {
       // deposit tx, verify tx and collect UTXO(s)
       depositTx(state, tx, context)
-    } else if (tx.signatoryKey) {
+    } else if (isSignatoryCommitmentTx(tx)) {
       // signatory key tx, add validator's pubkey to signatory set
       signatoryKeyTx(state, tx, context)
-    } else if (tx.signatures) {
+    } else if (isSignatureTx(tx)) {
       // signature tx, add signatory's sig to outgoing transaction
       signatureTx(state, tx, context)
     } else {
@@ -101,7 +109,7 @@ let bitcoinPeg: any = function(
   // verify and add to state
   function headersTx(
     state: BitcoinPegState,
-    tx: BitcoinPegTx,
+    tx: BitcoinPegHeadersTx,
     context: BitcoinPegContext
   ) {
     let chain = Blockchain({
@@ -123,7 +131,7 @@ let bitcoinPeg: any = function(
   // then mint new coins to the recipient
   function depositTx(
     state: BitcoinPegState,
-    tx: BitcoinPegTx,
+    tx: BitcoinPegDepositTx,
     context: BitcoinPegContext
   ) {
     // get specified block header from state
@@ -218,7 +226,7 @@ let bitcoinPeg: any = function(
   // while for bitcoin we need secp256k1 keys.
   function signatoryKeyTx(
     state: BitcoinPegState,
-    tx: BitcoinPegTx,
+    tx: BitcoinPegSignatoryCommitmentTx,
     context: BitcoinPegContext
   ) {
     let { signatoryIndex, signatoryKey, signature } = tx
@@ -256,7 +264,7 @@ let bitcoinPeg: any = function(
   // signature tx, add signatory's sig to outgoing transaction
   function signatureTx(
     state: BitcoinPegState,
-    tx: BitcoinPegTx,
+    tx: BitcoinPegSignatureTx,
     context: BitcoinPegContext
   ) {
     let { signatoryIndex, signatures } = tx

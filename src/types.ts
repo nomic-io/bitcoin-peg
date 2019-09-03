@@ -12,7 +12,7 @@ export enum KeyType {
 }
 
 export interface LightClient {
-  send(tx: any): Promise<any>
+  send(tx: BitcoinPegTx): Promise<any>
   state: any
   validators: Array<{
     address: string
@@ -80,6 +80,12 @@ export interface Withdrawal {
   amount: number
   script: Buffer
 }
+export interface MerkleProof {
+  flags: number[]
+  hashes: Buffer[]
+  merkleRoot: Buffer
+  numTransactions: number
+}
 
 export interface BitcoinPegState {
   chain: Header[]
@@ -94,7 +100,45 @@ export interface BitcoinPegState {
   prevSignedTx: SignedTx | null
 }
 
-export type BitcoinPegTx = any
+export interface BitcoinPegHeadersTx {
+  headers: Header[]
+}
+export function isHeadersTx(tx: any): tx is BitcoinPegHeadersTx {
+  return tx.headers instanceof Array
+}
+export interface BitcoinPegDepositTx {
+  transactions: []
+  height: number
+  proof: MerkleProof
+}
+export function isDepositTx(tx: any): tx is BitcoinPegDepositTx {
+  return tx.transactions instanceof Array
+}
+export interface BitcoinPegSignatoryCommitmentTx {
+  signatoryKey: Buffer
+  signatoryIndex: number
+  signature: Buffer
+}
+export function isSignatoryCommitmentTx(
+  tx: any
+): tx is BitcoinPegSignatoryCommitmentTx {
+  return Buffer.isBuffer(tx.signatoryKey)
+}
+
+export interface BitcoinPegSignatureTx {
+  signatures: Buffer[]
+  signatoryIndex: number
+}
+export function isSignatureTx(tx: any): tx is BitcoinPegSignatureTx {
+  return tx.signatures instanceof Array
+}
+
+export type BitcoinPegTx = (
+  | BitcoinPegHeadersTx
+  | BitcoinPegDepositTx
+  | BitcoinPegSignatoryCommitmentTx
+  | BitcoinPegSignatureTx) & { type: 'bitcoin' }
+
 export type BitcoinPegContext = any
 
 // RPC types
