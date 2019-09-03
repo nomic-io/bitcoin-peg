@@ -43,7 +43,7 @@
     "webcoin": "^3.1.0"
   },
   "scripts": {
-    "pretest": "tsc -p .",
+    "pretest": "tsc -p . --sourcemap",
     "test": "nyc ava dist/test/*.js",
     "posttest": "nyc report --reporter=json > coverage.lcov"
   },
