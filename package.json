@@ -44,8 +44,7 @@
   },
   "scripts": {
     "pretest": "tsc -p . --sourcemap",
-    "test": "nyc ava dist/test/*.js",
-    "posttest": "nyc report --reporter=json > coverage.lcov"
+    "test": "nyc --reporter=lcov ava dist/test/*.js"
   },
   "repository": {
     "type": "git",
