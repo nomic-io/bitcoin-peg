@@ -1,17 +1,26 @@
-'use strict'
-
-const { createHash } = require('crypto')
-const ed = require('ed25519-supercop')
-const secp = require('secp256k1')
-const bitcoin = require('bitcoinjs-lib')
-const {
+import { createHash } from 'crypto'
+let ed = require('ed25519-supercop')
+let secp = require('secp256k1')
+import * as bitcoin from 'bitcoinjs-lib'
+import {
+  ValidatorKey,
+  ValidatorMap,
+  BitcoinNetwork,
+  LightClient,
+  SigningTx
+} from './types'
+import {
   getSignatorySet,
   buildOutgoingTx,
   createWitnessScript
-} = require('./reserve.js')
-const { convertValidatorsToLotion } = require('./relay.js')
+} from './reserve'
+import { convertValidatorsToLotion } from './relay.js'
 
-async function commitPubkey (client, privValidator, signatoryPub) {
+export async function commitPubkey(
+  client: LightClient,
+  privValidator: ValidatorKey,
+  signatoryPub: Buffer
+) {
   if (!secp.publicKeyVerify(signatoryPub)) {
     throw Error('Invalid signatory public key')
   }
@@ -33,15 +42,21 @@ async function commitPubkey (client, privValidator, signatoryPub) {
 
   let signature = ed25519Sign(privValidator, signatoryPub)
 
-  return checkResult(await client.send({
-    type: 'bitcoin',
-    signatoryIndex,
-    signatoryKey: signatoryPub,
-    signature
-  }))
+  return checkResult(
+    await client.send({
+      type: 'bitcoin',
+      signatoryIndex,
+      signatoryKey: signatoryPub,
+      signature
+    })
+  )
 }
 
-async function signDisbursal (client, signatoryPriv) {
+export async function signDisbursal(
+  client: LightClient,
+  signatoryPriv: Buffer,
+  network: BitcoinNetwork
+) {
   let signatoryPub = secp.publicKeyCreate(signatoryPriv)
   let validators = convertValidatorsToLotion(client.validators)
   let signatoryKeys = await client.state.bitcoin.signatoryKeys
@@ -59,33 +74,43 @@ async function signDisbursal (client, signatoryPriv) {
     throw Error('Given signatory key not found in signatory set')
   }
 
-  let signingTx = await client.state.bitcoin.signingTx
+  let signingTx: SigningTx = await client.state.bitcoin.signingTx
   if (signingTx == null) {
     throw Error('No tx to be signed')
   }
 
-  let bitcoinTx = buildOutgoingTx(signingTx, validators, signatoryKeys)
+  let bitcoinTx = buildOutgoingTx(signingTx, validators, signatoryKeys, network)
 
   let p2ss = createWitnessScript(validators, signatoryKeys)
   let sigHashes = signingTx.inputs.map((input, i) =>
-    bitcoinTx.hashForWitnessV0(i, p2ss, input.amount, bitcoin.Transaction.SIGHASH_ALL))
-  let signatures = sigHashes.map((hash) => {
+    bitcoinTx.hashForWitnessV0(
+      i,
+      p2ss,
+      input.amount,
+      bitcoin.Transaction.SIGHASH_ALL
+    )
+  )
+  let signatures = sigHashes.map(hash => {
     let signature = secp.sign(hash, signatoryPriv).signature
     return secp.signatureExport(signature)
   })
 
-  return checkResult(await client.send({
-    type: 'bitcoin',
-    signatures,
-    signatoryIndex
-  }))
+  return checkResult(
+    await client.send({
+      type: 'bitcoin',
+      signatures,
+      signatoryIndex
+    })
+  )
 }
 
-function sha512 (data) {
-  return createHash('sha512').update(data).digest()
+function sha512(data: Buffer) {
+  return createHash('sha512')
+    .update(data)
+    .digest()
 }
 
-function ed25519Sign (privValidator, message) {
+function ed25519Sign(privValidator: ValidatorKey, message: Buffer) {
   if (privValidator.priv_key.type !== 'tendermint/PrivKeyEd25519') {
     throw Error('Expected privkey type "tendermint/PrivKeyEd25519"')
   }
@@ -97,8 +122,36 @@ function ed25519Sign (privValidator, message) {
   return ed.sign(message, pub, priv)
 }
 
+export async function getSignatoryScriptHashFromPegZone(
+  lightClient: LightClient
+) {
+  let signatoryKeys = await lightClient.state.bitcoin.signatoryKeys
+  let lotionValidators: ValidatorMap = {}
+  lightClient.validators.forEach(validator => {
+    lotionValidators[validator.pub_key.value] = validator.voting_power
+  })
+  let p2ss = createWitnessScript(lotionValidators, signatoryKeys)
+  return p2ss
+}
+
+export async function getCurrentP2ssAddress(
+  lightClient: any,
+  network: BitcoinNetwork
+) {
+  let p2ss = await getSignatoryScriptHashFromPegZone(lightClient)
+
+  let p2ssAddress = bitcoin.payments.p2wsh({
+    redeem: { output: p2ss },
+    network: bitcoin.networks[network === 'mainnet' ? 'bitcoin' : network]
+  }).address
+  if (!p2ssAddress) {
+    throw new Error('Could not derive p2ss address from peg zone')
+  }
+  return p2ssAddress
+}
+
 // TODO: move this somewhere else
-function convertEd25519 (ref10Priv) {
+export function convertEd25519(ref10Priv: Buffer) {
   // see https://github.com/orlp/ed25519/issues/10#issuecomment-242761092
   let privConverted = sha512(ref10Priv.slice(0, 32))
   privConverted[0] &= 248
@@ -107,16 +160,10 @@ function convertEd25519 (ref10Priv) {
   return privConverted
 }
 
-function checkResult (res) {
+function checkResult(res: any) {
   if (res.check_tx.code || res.deliver_tx.code) {
     let log = res.check_tx.log || res.deliver_tx.log
     throw Error(log)
   }
   return res
-}
-
-module.exports = {
-  commitPubkey,
-  signDisbursal,
-  convertEd25519
 }

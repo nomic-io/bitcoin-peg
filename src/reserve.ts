@@ -1,38 +1,45 @@
-'use strict'
+import {
+  networks,
+  payments,
+  script,
+  Transaction,
+  TxOutput
+} from 'bitcoinjs-lib'
 
-let { script, Transaction, payments, networks } = require('bitcoinjs-lib')
+import { BitcoinNetwork, SignatoryMap, SigningTx, ValidatorMap } from './types'
 
 const MAX_SIGNATORIES = 76
 const MIN_RELAY_FEE = 1000
 
-const firstSignatory = ({ pubkey, votingPower }) => `
-  ${pubkey} OP_CHECKSIG
+const firstSignatory = (signatory: { votingPower: number; pubkey: string }) => {
+  return `
+  ${signatory.pubkey} OP_CHECKSIG
   OP_IF
-    ${uint(votingPower)}
+    ${uint(signatory.votingPower)}
   OP_ELSE
     OP_0
   OP_ENDIF
 `
-
-const nthSignatory = ({ pubkey, votingPower }) => `
+}
+const nthSignatory = (signatory: { pubkey: string; votingPower: number }) => `
   OP_SWAP
-    ${pubkey} OP_CHECKSIG
+    ${signatory.pubkey} OP_CHECKSIG
   OP_IF
-    ${uint(votingPower)}
+    ${uint(signatory.votingPower)}
     OP_ADD
   OP_ENDIF
 `
 
-const compare = (threshold) => `
+const compare = (threshold: number) => `
   ${uint(threshold)}
   OP_GREATERTHAN
 `
 
-function signature (signature) {
+function signature(signature: string) {
   return signature || 'OP_0'
 }
 
-function uint (n) {
+function uint(n: number) {
   n = Number(n)
   if (!Number.isInteger(n)) {
     throw Error('Number must be an integer')
@@ -47,23 +54,29 @@ function uint (n) {
   return nHex
 }
 
-function getVotingPowerThreshold (signatories) {
+export function getVotingPowerThreshold(
+  signatories: { votingPower: number }[]
+) {
   let totalVotingPower = signatories.reduce((sum, s) => sum + s.votingPower, 0)
-  let twoThirdsVotingPower = Math.ceil(totalVotingPower * 2 / 3)
+  let twoThirdsVotingPower = Math.ceil((totalVotingPower * 2) / 3)
   return twoThirdsVotingPower
 }
 
-function createWitnessScript (validators, signatoryKeys) {
+export function createWitnessScript(
+  validators: ValidatorMap,
+  signatoryKeys: SignatoryMap
+) {
   // get signatory key for each signatory
-  let signatories = getSignatorySet(validators)
+  let signatories: { pubkey: string; votingPower: number }[] = getSignatorySet(
+    validators
+  )
     .map(({ validatorKey, votingPower }) => {
-      let pubkey = signatoryKeys[validatorKey]
-      if (pubkey) {
-        pubkey = pubkey.toString('hex')
-      }
-      return { pubkey, votingPower }
+      let pubkeyHex
+      let pubkeyBytes: Buffer = signatoryKeys[validatorKey]
+      pubkeyHex = pubkeyBytes.toString('hex')
+      return { pubkey: pubkeyHex, votingPower }
     })
-    .filter((s) => s.pubkey != null)
+    .filter(s => s.pubkey != null)
 
   let twoThirdsVotingPower = getVotingPowerThreshold(signatories)
 
@@ -78,7 +91,7 @@ function createWitnessScript (validators, signatoryKeys) {
   return script.fromASM(trim(asm))
 }
 
-function createScriptSig (signatures) {
+export function createScriptSig(signatures: string[]) {
   let asm = signatures
     .map(signature)
     .reverse()
@@ -87,35 +100,41 @@ function createScriptSig (signatures) {
   return script.fromASM(trim(asm))
 }
 
-function trim (s) {
+function trim(s: string) {
   return s
     .split(/\s/g)
-    .filter((s) => !!s)
+    .filter(s => !!s)
     .join(' ')
 }
 
 // gets the array of validators who are in the signatory set.
 // note that each will commit to a separate secp256k1 signatory
 // key for bitcoin transactions.
-function getSignatorySet (validators) {
+export function getSignatorySet(validators: ValidatorMap) {
   let entries = Object.entries(validators)
-  entries.sort((a, b) => {
+  entries.sort((a: any, b: any) => {
     // sort by voting power, breaking ties with pubkey
-    let cmp = b[1] - a[1]
+    let votingPowerA: number = a[1]
+    let votingPowerB: number = b[1]
+    let cmp = votingPowerB - votingPowerA
     if (cmp === 0) {
       cmp = b[0] < a[0] ? 1 : -1
     }
     return cmp
   })
   return entries
-    .map(([ validatorKey, votingPower ]) =>
-      ({ validatorKey, votingPower }))
+    .map(([validatorKey, votingPower]) => ({ validatorKey, votingPower }))
     .slice(0, MAX_SIGNATORIES)
 }
 
-function buildOutgoingTx (signingTx, validators, signatoryKeys) {
+export function buildOutgoingTx(
+  signingTx: SigningTx,
+  validators: ValidatorMap,
+  signatoryKeys: SignatoryMap,
+  network: BitcoinNetwork
+) {
   let { inputs, outputs } = signingTx
-
+  console.log(inputs)
   let tx = new Transaction()
   let totalAmount = 0
 
@@ -134,7 +153,7 @@ function buildOutgoingTx (signingTx, validators, signatoryKeys) {
   }
 
   // change output
-  let p2ss = createOutput(validators, signatoryKeys)
+  let p2ss = createOutput(validators, signatoryKeys, network)
   tx.addOutput(p2ss, remainingAmount)
 
   // withdrawals pay fee
@@ -145,31 +164,26 @@ function buildOutgoingTx (signingTx, validators, signatoryKeys) {
   // TODO: adjust fee amount
   let feeAmountPerWithdrawal = Math.ceil(feeAmount / outputs.length)
   for (let i = 0; i < outputs.length; i++) {
-    tx.outs[i].value -= feeAmountPerWithdrawal
-    if (tx.outs[i].value <= 0) {
+    let out: TxOutput = tx.outs[i] as TxOutput
+    out.value -= feeAmountPerWithdrawal
+    if (out.value <= 0) {
       // TODO: remove this output and start fee paying process over
       throw Error('Output is not large enough to pay fee')
     }
   }
-
   return tx
 }
 
-function createOutput (validators, signatoryKeys) {
+export function createOutput(
+  validators: ValidatorMap,
+  signatoryKeys: SignatoryMap,
+  network: BitcoinNetwork
+) {
   // p2ss = pay to signatory set
   let p2ss = createWitnessScript(validators, signatoryKeys)
 
   return payments.p2wsh({
     redeem: { output: p2ss },
-    network: networks.testnet // TODO
-  }).output
-}
-
-module.exports = {
-  createWitnessScript,
-  createScriptSig,
-  getSignatorySet,
-  getVotingPowerThreshold,
-  buildOutgoingTx,
-  createOutput
+    network: networks[network === 'mainnet' ? 'bitcoin' : network]
+  }).output as Buffer
 }

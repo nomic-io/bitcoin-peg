@@ -7,29 +7,24 @@ let { randomBytes } = require('crypto')
 let { join, dirname } = require('path')
 let secp = require('secp256k1')
 let { connect } = require('lotion')
-let {
-  commitPubkey,
-  signDisbursal
-} = require('../src/signatory.js')
+let { commitPubkey, signDisbursal } = require('../dist/src/signatory.js')
 let DJSON = require('deterministic-json')
 
-async function main () {
-  let gci = process.argv[2]
+async function main() {
+  let genesisPath = process.argv[2]
   let privValidatorPath = process.argv[3]
+  let lotionRpcSeed = process.argv[4]
 
-  if (gci == null || privValidatorPath == null) {
-    console.error('usage: node signatory.js <GCI or genesis> <priv_validator>')
+  if (genesisPath == null || privValidatorPath == null) {
+    console.error(
+      'usage: node signatory.js <genesis path> <priv_validator path>'
+    )
     process.exit(1)
   }
 
   // maybe read genesis
-  let genesis
-  if (gci.includes('/') || gci.includes('\\')) {
-    let genesisPath = gci
-    gci = null
-    let genesisJSON = readFileSync(genesisPath)
-    genesis = JSON.parse(genesisJSON)
-  }
+  let genesisJSON = readFileSync(genesisPath)
+  let genesis = JSON.parse(genesisJSON)
 
   // load privValidator
   let privValidatorJSON = readFileSync(privValidatorPath)
@@ -46,20 +41,35 @@ async function main () {
     signatoryKey = { priv: randomBytes(32) }
     let signatoryKeyJSON = DJSON.stringify(signatoryKey)
     writeFileSync(signatoryKeyPath, signatoryKeyJSON)
-    console.log(`generated signatory private key, saved to "${signatoryKeyPath}"`)
+    console.log(
+      `generated signatory private key, saved to "${signatoryKeyPath}"`
+    )
   }
 
-  let client = await connect(gci, {
-    genesis,
-    nodes: gci ? null : ['ws://localhost:1338']
-  })
+  let client = await connect(
+    null,
+    {
+      genesis: require(genesisPath),
+      nodes: [lotionRpcSeed]
+    }
+  )
   console.log('connected to peg zone network')
 
   // ensure we haven't committed to a key yet
   let signatoryPub = secp.publicKeyCreate(signatoryKey.priv)
-  let committedPub = await client.state.bitcoin.signatoryKeys[privValidator.pub_key.value]
-  if (committedPub != null && !committedPub.equals(signatoryPub) && !process.argv.includes('-f')) {
-    console.log('already committed to a different signatory key. i hope you didn\'t lose the private key you committed to...')
+  let committedPub = await client.state.bitcoin.signatoryKeys[
+    privValidator.pub_key.value
+  ]
+  console.log('committed pub:')
+  console.log(typeof committedPub)
+  if (
+    committedPub != null &&
+    !committedPub.equals(signatoryPub) &&
+    !process.argv.includes('-f')
+  ) {
+    console.log(
+      "already committed to a different signatory key. i hope you didn't lose the private key you committed to..."
+    )
     process.exit(1)
   }
   // commit to a signatory key
@@ -82,11 +92,11 @@ async function main () {
   }
 }
 
-main().catch((err) => {
+main().catch(err => {
   console.error(err.stack)
   process.exit(1)
 })
 
-function delay (ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms))
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }

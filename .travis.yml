@@ -1,13 +1,13 @@
 language: node_js
-sudo: false
+sudo: required
 node_js:
-  - "8"
-  - "9"
-  - "10"
+  - '10'
 install:
   - npm install
 script:
   - npm test
+  - npm install codecov -g
 notifications:
   email: false
-
+after_success:
+  - codecov
