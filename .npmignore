@@ -1,4 +1,5 @@
 .travis.yml
+coverage/
 test
 bitcoinPeg.md
 .nyc_output

@@ -43,7 +43,9 @@
     "webcoin": "^3.1.0"
   },
   "scripts": {
-    "test": "tsc && ava dist/test/*.js"
+    "pretest": "tsc",
+    "test": "nyc ava dist/test/*.js",
+    "posttest": "nyc report --reporter=json"
   },
   "repository": {
     "type": "git",

@@ -6,5 +6,8 @@ install:
   - npm install
 script:
   - npm test
+  - npm install codecov -g
 notifications:
   email: false
+after_success:
+  - codecov
