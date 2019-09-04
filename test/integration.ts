@@ -39,6 +39,7 @@ import {
   RPCHeader
 } from '../src/types'
 
+let aliceValidatorKey: ValidatorKey = JSON.parse(genValidator()).Key
 let bobValidatorKey: ValidatorKey = JSON.parse(genValidator()).Key
 
 let lotionValidators: ValidatorMap = {
@@ -119,8 +120,15 @@ function makeLotionApp(trustedBtcHeader: RPCHeader) {
     initialState: {}
   })
 
+  app.use('staking', function(state: any, tx: any, context: any) {
+    lotionValidators[tx.stakeToKey] = 10
+
+    context.validators = lotionValidators
+    state.nonce = (state.nonce || 0) + 1
+  })
   app.use(function(state: any, tx: any, context: any) {
     context.validators = lotionValidators
+    console.log(context)
   })
   app.useBlock(function(state: any, context: any) {
     context.validators = lotionValidators
@@ -214,8 +222,6 @@ test('deposit / send / withdraw', async function(t) {
     [bobValidatorKey.pub_key.value]: bobWallet.pubkey
   })
   await ctx.relay.step()
-  let btcState = await lc.state.bitcoin
-  console.log(btcState)
   // Alice builds, signs, and sends a deposit transaction to pay to the current signatory set.
   let utxos = (await ctx.aliceRpc.listUnspent()).map(formatUtxo)
   let bitcoinDepositTx = deposit.createBitcoinTx(
@@ -278,6 +284,29 @@ test('deposit / send / withdraw', async function(t) {
   // Now bob has some Bitcoin.
   let bobBtcBalance = await ctx.bobRpc.getBalance()
   t.is(bobBtcBalance, 4.99999)
+
+  // Alice becomes a validator (as if by staking)
+  await lc.send({
+    type: 'staking',
+    stakeToKey: aliceValidatorKey.pub_key.value
+  })
+  // manually refresh light client validators for this test
+  lc.validators.push({
+    address: aliceValidatorKey.address,
+    pub_key: aliceValidatorKey.pub_key,
+    power: 10,
+    voting_power: 10,
+    name: 'alice'
+  })
+  t.is(Object.keys(lotionValidators).length, 2)
+
+  // Alice commits to a signatory key
+  await commitPubkey(lc, aliceValidatorKey, ctx.aliceWallet.pubkey)
+  signatoryKeys = await lc.state.bitcoin.signatoryKeys
+  t.deepEqual(signatoryKeys, {
+    [aliceValidatorKey.pub_key.value]: ctx.aliceWallet.pubkey,
+    [bobValidatorKey.pub_key.value]: ctx.bobWallet.pubkey
+  })
 })
 
 function formatHeader(header: RPCHeader) {
