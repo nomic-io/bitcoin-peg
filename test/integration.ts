@@ -21,7 +21,11 @@ import { tmpdir } from 'os'
 let { mkdirSync, remove } = require('fs-extra')
 import { join } from 'path'
 import getPort = require('get-port')
-import { commitPubkey, signDisbursal } from '../src/signatory'
+import {
+  commitPubkey,
+  signDisbursal,
+  getCurrentP2ssAddress
+} from '../src/signatory'
 let seed = require('random-bytes-seed')
 import { Relay } from '../src/relay'
 import * as bitcoin from 'bitcoinjs-lib'
@@ -299,7 +303,7 @@ test('deposit / send / withdraw', async function(t) {
     name: 'alice'
   })
   t.is(Object.keys(lotionValidators).length, 2)
-
+  let p2ssa = await getCurrentP2ssAddress(lc, 'regtest')
   // Alice commits to a signatory key
   await commitPubkey(lc, aliceValidatorKey, ctx.aliceWallet.pubkey)
   signatoryKeys = await lc.state.bitcoin.signatoryKeys
@@ -307,6 +311,9 @@ test('deposit / send / withdraw', async function(t) {
     [aliceValidatorKey.pub_key.value]: ctx.aliceWallet.pubkey,
     [bobValidatorKey.pub_key.value]: ctx.bobWallet.pubkey
   })
+
+  // Current pay-to-signatory-set-address should change after a new signatory joins
+  t.not(await getCurrentP2ssAddress(lc, 'regtest'), p2ssa)
 })
 
 function formatHeader(header: RPCHeader) {
