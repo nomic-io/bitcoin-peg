@@ -6,7 +6,13 @@ import {
   TxOutput
 } from 'bitcoinjs-lib'
 
-import { BitcoinNetwork, SignatoryMap, SigningTx, ValidatorMap } from './types'
+import {
+  BitcoinNetwork,
+  SignatoryKeyMap,
+  SigningTx,
+  SignatorySet,
+  ValidatorMap
+} from './types'
 
 const MAX_SIGNATORIES = 76
 const MIN_RELAY_FEE = 1000
@@ -64,7 +70,7 @@ export function getVotingPowerThreshold(
 
 export function createWitnessScript(
   validators: ValidatorMap,
-  signatoryKeys: SignatoryMap
+  signatoryKeys: SignatoryKeyMap
 ) {
   // get signatory key for each signatory
   let signatories: { pubkey: string; votingPower: number }[] = getSignatorySet(
@@ -131,7 +137,7 @@ export function getSignatorySet(validators: ValidatorMap) {
 export function buildOutgoingTx(
   signingTx: SigningTx,
   validators: ValidatorMap,
-  signatoryKeys: SignatoryMap,
+  signatoryKeys: SignatoryKeyMap,
   network: BitcoinNetwork
 ) {
   let { inputs, outputs } = signingTx
@@ -174,9 +180,28 @@ export function buildOutgoingTx(
   return tx
 }
 
+/**
+ * Get the pay-to-signatory-set hex script and address.
+ *
+ */
+export function getP2ssInfo(
+  signatorySet: SignatorySet,
+  network: BitcoinNetwork
+) {
+  let p2ss = createWitnessScript(
+    signatorySet.validators,
+    signatorySet.signatoryKeys
+  )
+  let p2ssAddress = payments.p2wsh({
+    redeem: { output: p2ss },
+    network: networks[network === 'mainnet' ? 'bitcoin' : network]
+  }).address as string
+  return { address: p2ssAddress, script: p2ss }
+}
+
 export function createOutput(
   validators: ValidatorMap,
-  signatoryKeys: SignatoryMap,
+  signatoryKeys: SignatoryKeyMap,
   network: BitcoinNetwork
 ) {
   // p2ss = pay to signatory set

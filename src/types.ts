@@ -27,7 +27,7 @@ export type BitcoinNetwork = 'regtest' | 'testnet' | 'mainnet'
  * Maps validator public key (base64) to signatory public key (buffer)
  */
 
-export interface SignatoryMap {
+export interface SignatoryKeyMap {
   [index: string]: Buffer
 }
 
@@ -87,17 +87,26 @@ export interface MerkleProof {
   numTransactions: number
 }
 
+export interface SignatorySet {
+  utxos: UTXO[]
+  signatoryKeys: SignatoryKeyMap
+  validators: {
+    [pubkey: string]: number
+  }
+  prevSignedTx: SignedTx | null
+  signingTx: SigningTx | null
+  signedTx: SignedTx | null
+}
 export interface BitcoinPegState {
   chain: Header[]
-  signatoryKeys: SignatoryMap
   processedTxs: {
     [txid: string]: true
   }
-  utxos: UTXO[]
+  currentP2ssAddress: string
   withdrawals: Withdrawal[]
-  signingTx: SigningTx | null
-  signedTx: SignedTx | null
-  prevSignedTx: SignedTx | null
+  signatorySets: {
+    [p2ssAddress: string]: SignatorySet
+  }
 }
 
 export interface BitcoinPegHeadersTx {

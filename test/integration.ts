@@ -35,13 +35,7 @@ let ed = require('ed25519-supercop')
 let secp = require('secp256k1')
 let randomBytes = seed('seed')
 let base58 = require('bs58check')
-import {
-  ValidatorMap,
-  ValidatorKey,
-  SignatoryMap,
-  SignedTx,
-  RPCHeader
-} from '../src/types'
+import { ValidatorMap, ValidatorKey, SignedTx, RPCHeader } from '../src/types'
 
 let aliceValidatorKey: ValidatorKey = JSON.parse(genValidator()).Key
 let bobValidatorKey: ValidatorKey = JSON.parse(genValidator()).Key
@@ -212,8 +206,8 @@ test('deposit / send / withdraw', async function(t) {
 
   // Alice wants to deposit her Bitcoin into the peg zone,
   // but there aren't any signatories on the peg zone yet.
-  let signatoryKeys = await lc.state.bitcoin.signatoryKeys
-  t.is(Object.keys(signatoryKeys).length, 0)
+  // let signatoryKeys = await lc.state.bitcoin.signatoryKeys
+  // t.is(Object.keys(signatoryKeys).length, 0)
 
   // Bob, however, is already a validator.
   t.is(lc.validators[0].pub_key.value, bobValidatorKey.pub_key.value)
@@ -221,7 +215,10 @@ test('deposit / send / withdraw', async function(t) {
   // Bob the validator commits to a signatory key.
   let bobWallet = ctx.bobWallet
   await commitPubkey(lc, bobValidatorKey, bobWallet.pubkey)
-  signatoryKeys = await lc.state.bitcoin.signatoryKeys
+
+  let p2ssAddress: string = await lc.state.bitcoin.currentP2ssAddress
+  let signatoryKeys = await lc.state.bitcoin.signatorySets[p2ssAddress]
+    .signatoryKeys
   t.deepEqual(signatoryKeys, {
     [bobValidatorKey.pub_key.value]: bobWallet.pubkey
   })
@@ -259,7 +256,7 @@ test('deposit / send / withdraw', async function(t) {
 
   // Bob wants to withdraw some of the pegged Bitcoin he received.
   // Bob submits a withdrawal transaction.
-  let signingTx = await lc.state.bitcoin.signingTx
+  let signingTx = await lc.state.bitcoin.signatorySets[p2ssAddress].signingTx
   t.is(signingTx, null)
   let bobBtcAddress = await ctx.bobRpc.getNewAddress()
   let outputScript = bitcoin.address.toOutputScript(
@@ -271,15 +268,17 @@ test('deposit / send / withdraw', async function(t) {
     amount: 5e8,
     script: outputScript
   })
-  signingTx = await lc.state.bitcoin.signingTx
+  signingTx = await lc.state.bitcoin.signatorySets[p2ssAddress].signingTx
   t.is(signingTx.outputs[0].amount, 5e8)
   t.is(signingTx.signatures.length, 0)
 
   // Bob adds his signature to the disbursal transaction.
   await signDisbursal(lc, ctx.bobWallet.privkey, 'regtest')
-  signingTx = await lc.state.bitcoin.signingTx
+  signingTx = await lc.state.bitcoin.signatorySets[p2ssAddress].signingTx
   t.is(signingTx, null)
-  let signedTx: SignedTx | null = await lc.state.bitcoin.signedTx
+  let signedTx: SignedTx | null = await lc.state.bitcoin.signatorySets[
+    p2ssAddress
+  ].signedTx
 
   // The signed tx gets broadcast to the Bitcoin network by the relayer:
   await ctx.relay.step()
@@ -303,17 +302,21 @@ test('deposit / send / withdraw', async function(t) {
     name: 'alice'
   })
   t.is(Object.keys(lotionValidators).length, 2)
-  let p2ssa = await getCurrentP2ssAddress(lc, 'regtest')
+
   // Alice commits to a signatory key
   await commitPubkey(lc, aliceValidatorKey, ctx.aliceWallet.pubkey)
-  signatoryKeys = await lc.state.bitcoin.signatoryKeys
+  let updatedP2ssAddress: string = await lc.state.bitcoin.currentP2ssAddress
+  signatoryKeys = await lc.state.bitcoin.signatorySets[updatedP2ssAddress]
+    .signatoryKeys
   t.deepEqual(signatoryKeys, {
     [aliceValidatorKey.pub_key.value]: ctx.aliceWallet.pubkey,
     [bobValidatorKey.pub_key.value]: ctx.bobWallet.pubkey
   })
 
   // Current pay-to-signatory-set-address should change after a new signatory joins
-  t.not(await getCurrentP2ssAddress(lc, 'regtest'), p2ssa)
+  t.not(p2ssAddress, updatedP2ssAddress)
+
+  // Bob withdraws a little more (just to trigger a disbursal)
 })
 
 function formatHeader(header: RPCHeader) {
