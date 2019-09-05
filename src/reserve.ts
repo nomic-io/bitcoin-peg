@@ -70,13 +70,14 @@ export function createWitnessScript(
   let signatories: { pubkey: string; votingPower: number }[] = getSignatorySet(
     validators
   )
+    .filter(validator => {
+      return signatoryKeys[validator.validatorKey]
+    })
     .map(({ validatorKey, votingPower }) => {
-      let pubkeyHex
       let pubkeyBytes: Buffer = signatoryKeys[validatorKey]
-      pubkeyHex = pubkeyBytes.toString('hex')
+      let pubkeyHex = pubkeyBytes.toString('hex')
       return { pubkey: pubkeyHex, votingPower }
     })
-    .filter(s => s.pubkey != null)
 
   let twoThirdsVotingPower = getVotingPowerThreshold(signatories)
 
@@ -134,7 +135,6 @@ export function buildOutgoingTx(
   network: BitcoinNetwork
 ) {
   let { inputs, outputs } = signingTx
-  console.log(inputs)
   let tx = new Transaction()
   let totalAmount = 0
 
