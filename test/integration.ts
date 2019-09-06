@@ -225,9 +225,9 @@ test('deposit / send / withdraw', async function(t) {
   await ctx.relay.step()
   // Alice builds, signs, and sends a deposit transaction to pay to the current signatory set.
   let utxos = (await ctx.aliceRpc.listUnspent()).map(formatUtxo)
+  let signatorySet = await lc.state.bitcoin.signatorySets[p2ssAddress]
   let bitcoinDepositTx = deposit.createBitcoinTx(
-    lotionValidators,
-    signatoryKeys,
+    signatorySet,
     utxos,
     base58.decode(ctx.aliceWallet.address()),
     'regtest'
