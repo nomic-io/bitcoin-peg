@@ -80,6 +80,8 @@ When an owner of pegged Bitcoin tokens wishes to withdraw from the reserves, or 
 
 Periodically, the network will make transactions on the Bitcoin blockchain which spend from the reserve wallet. These transactions are called **checkpoints**, and serve the purpose of (1) collecting deposits, (2) updating the reserve script to reflect the latest validator set, (3) disbursing pending withdrawals, and (4) providing a way for light clients to verify the state of the peg network secured by the Bitcoin network's proof-of-work.
 
+![](./diagram.svg)
+
 Each checkpoint is made up of 3 connected Bitcoin transactions, the **deposit collection** transaction, the **checkpoint** transaction, and the **disbursal** transaction.
 
 #### Deposit Collection Transaction
