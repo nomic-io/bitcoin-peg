@@ -7,7 +7,8 @@ import {
   ValidatorMap,
   BitcoinNetwork,
   LightClient,
-  SigningTx
+  SigningTx,
+  SignatorySet
 } from './types'
 import {
   getSignatorySet,
@@ -58,12 +59,16 @@ export async function signDisbursal(
   network: BitcoinNetwork
 ) {
   let signatoryPub = secp.publicKeyCreate(signatoryPriv)
-  let validators = convertValidatorsToLotion(client.validators)
-  let signatoryKeys = await client.state.bitcoin.signatoryKeys
-  let signatorySet = getSignatorySet(validators)
+  // let validators = convertValidatorsToLotion(client.validators)
+  let p2ssAddress = await client.state.bitcoin.currentP2ssAddress
+  let signatorySet: SignatorySet = await client.state.bitcoin.signatorySets[
+    p2ssAddress
+  ]
+  let { signatoryKeys, validators } = signatorySet
+  let signatoryKeyAndPower = getSignatorySet(validators)
   let signatoryIndex
-  for (let i = 0; i < signatorySet.length; i++) {
-    let signatory = signatorySet[i]
+  for (let i = 0; i < signatoryKeyAndPower.length; i++) {
+    let signatory = signatoryKeyAndPower[i]
     if (signatoryKeys[signatory.validatorKey].equals(signatoryPub)) {
       // found our signatory
       signatoryIndex = i
@@ -74,7 +79,7 @@ export async function signDisbursal(
     throw Error('Given signatory key not found in signatory set')
   }
 
-  let signingTx: SigningTx = await client.state.bitcoin.signingTx
+  let { signingTx } = signatorySet
   if (signingTx == null) {
     throw Error('No tx to be signed')
   }

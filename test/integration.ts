@@ -21,7 +21,11 @@ import { tmpdir } from 'os'
 let { mkdirSync, remove } = require('fs-extra')
 import { join } from 'path'
 import getPort = require('get-port')
-import { commitPubkey, signDisbursal } from '../src/signatory'
+import {
+  commitPubkey,
+  signDisbursal,
+  getCurrentP2ssAddress
+} from '../src/signatory'
 let seed = require('random-bytes-seed')
 import { Relay } from '../src/relay'
 import * as bitcoin from 'bitcoinjs-lib'
@@ -31,14 +35,9 @@ let ed = require('ed25519-supercop')
 let secp = require('secp256k1')
 let randomBytes = seed('seed')
 let base58 = require('bs58check')
-import {
-  ValidatorMap,
-  ValidatorKey,
-  SignatoryMap,
-  SignedTx,
-  RPCHeader
-} from '../src/types'
+import { ValidatorMap, ValidatorKey, SignedTx, RPCHeader } from '../src/types'
 
+let aliceValidatorKey: ValidatorKey = JSON.parse(genValidator()).Key
 let bobValidatorKey: ValidatorKey = JSON.parse(genValidator()).Key
 
 let lotionValidators: ValidatorMap = {
@@ -119,8 +118,15 @@ function makeLotionApp(trustedBtcHeader: RPCHeader) {
     initialState: {}
   })
 
+  app.use('staking', function(state: any, tx: any, context: any) {
+    lotionValidators[tx.stakeToKey] = 10
+
+    context.validators = lotionValidators
+    state.nonce = (state.nonce || 0) + 1
+  })
   app.use(function(state: any, tx: any, context: any) {
     context.validators = lotionValidators
+    console.log(context)
   })
   app.useBlock(function(state: any, context: any) {
     context.validators = lotionValidators
@@ -200,8 +206,8 @@ test('deposit / send / withdraw', async function(t) {
 
   // Alice wants to deposit her Bitcoin into the peg zone,
   // but there aren't any signatories on the peg zone yet.
-  let signatoryKeys = await lc.state.bitcoin.signatoryKeys
-  t.is(Object.keys(signatoryKeys).length, 0)
+  // let signatoryKeys = await lc.state.bitcoin.signatoryKeys
+  // t.is(Object.keys(signatoryKeys).length, 0)
 
   // Bob, however, is already a validator.
   t.is(lc.validators[0].pub_key.value, bobValidatorKey.pub_key.value)
@@ -209,18 +215,19 @@ test('deposit / send / withdraw', async function(t) {
   // Bob the validator commits to a signatory key.
   let bobWallet = ctx.bobWallet
   await commitPubkey(lc, bobValidatorKey, bobWallet.pubkey)
-  signatoryKeys = await lc.state.bitcoin.signatoryKeys
+
+  let p2ssAddress: string = await lc.state.bitcoin.currentP2ssAddress
+  let signatoryKeys = await lc.state.bitcoin.signatorySets[p2ssAddress]
+    .signatoryKeys
   t.deepEqual(signatoryKeys, {
     [bobValidatorKey.pub_key.value]: bobWallet.pubkey
   })
   await ctx.relay.step()
-  let btcState = await lc.state.bitcoin
-  console.log(btcState)
   // Alice builds, signs, and sends a deposit transaction to pay to the current signatory set.
   let utxos = (await ctx.aliceRpc.listUnspent()).map(formatUtxo)
+  let signatorySet = await lc.state.bitcoin.signatorySets[p2ssAddress]
   let bitcoinDepositTx = deposit.createBitcoinTx(
-    lotionValidators,
-    signatoryKeys,
+    signatorySet,
     utxos,
     base58.decode(ctx.aliceWallet.address()),
     'regtest'
@@ -249,7 +256,7 @@ test('deposit / send / withdraw', async function(t) {
 
   // Bob wants to withdraw some of the pegged Bitcoin he received.
   // Bob submits a withdrawal transaction.
-  let signingTx = await lc.state.bitcoin.signingTx
+  let signingTx = await lc.state.bitcoin.signatorySets[p2ssAddress].signingTx
   t.is(signingTx, null)
   let bobBtcAddress = await ctx.bobRpc.getNewAddress()
   let outputScript = bitcoin.address.toOutputScript(
@@ -261,15 +268,17 @@ test('deposit / send / withdraw', async function(t) {
     amount: 5e8,
     script: outputScript
   })
-  signingTx = await lc.state.bitcoin.signingTx
+  signingTx = await lc.state.bitcoin.signatorySets[p2ssAddress].signingTx
   t.is(signingTx.outputs[0].amount, 5e8)
   t.is(signingTx.signatures.length, 0)
 
   // Bob adds his signature to the disbursal transaction.
   await signDisbursal(lc, ctx.bobWallet.privkey, 'regtest')
-  signingTx = await lc.state.bitcoin.signingTx
+  signingTx = await lc.state.bitcoin.signatorySets[p2ssAddress].signingTx
   t.is(signingTx, null)
-  let signedTx: SignedTx | null = await lc.state.bitcoin.signedTx
+  let signedTx: SignedTx | null = await lc.state.bitcoin.signatorySets[
+    p2ssAddress
+  ].signedTx
 
   // The signed tx gets broadcast to the Bitcoin network by the relayer:
   await ctx.relay.step()
@@ -278,6 +287,36 @@ test('deposit / send / withdraw', async function(t) {
   // Now bob has some Bitcoin.
   let bobBtcBalance = await ctx.bobRpc.getBalance()
   t.is(bobBtcBalance, 4.99999)
+
+  // Alice becomes a validator (as if by staking)
+  await lc.send({
+    type: 'staking',
+    stakeToKey: aliceValidatorKey.pub_key.value
+  })
+  // manually refresh light client validators for this test
+  lc.validators.push({
+    address: aliceValidatorKey.address,
+    pub_key: aliceValidatorKey.pub_key,
+    power: 10,
+    voting_power: 10,
+    name: 'alice'
+  })
+  t.is(Object.keys(lotionValidators).length, 2)
+
+  // Alice commits to a signatory key
+  await commitPubkey(lc, aliceValidatorKey, ctx.aliceWallet.pubkey)
+  let updatedP2ssAddress: string = await lc.state.bitcoin.currentP2ssAddress
+  signatoryKeys = await lc.state.bitcoin.signatorySets[updatedP2ssAddress]
+    .signatoryKeys
+  t.deepEqual(signatoryKeys, {
+    [aliceValidatorKey.pub_key.value]: ctx.aliceWallet.pubkey,
+    [bobValidatorKey.pub_key.value]: ctx.bobWallet.pubkey
+  })
+
+  // Current pay-to-signatory-set-address should change after a new signatory joins
+  t.not(p2ssAddress, updatedP2ssAddress)
+
+  // Bob withdraws a little more (just to trigger a disbursal)
 })
 
 function formatHeader(header: RPCHeader) {

@@ -1,15 +1,15 @@
 import * as bitcoin from 'bitcoinjs-lib'
 
 import { createOutput } from './reserve'
-import { BitcoinNetwork, SignatoryMap, ValidatorMap } from './types'
+import { BitcoinNetwork, SignatorySet } from './types'
 
 export function createBitcoinTx(
-  validators: ValidatorMap,
-  signatoryKeys: SignatoryMap,
+  signatorySet: SignatorySet,
   utxos: any,
   destAddress: Buffer,
   network: BitcoinNetwork
 ): bitcoin.Transaction {
+  let { validators, signatoryKeys } = signatorySet
   let tx = new bitcoin.Transaction()
 
   // add the utxos as inputs

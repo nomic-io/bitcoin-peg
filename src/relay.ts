@@ -8,7 +8,7 @@ import {
 } from './signatory'
 import {
   BitcoinNetwork,
-  SignatoryMap,
+  SignatoryKeyMap,
   SignedTx,
   ValidatorMap,
   Header,
@@ -104,8 +104,7 @@ export class Relay {
   async step() {
     let rpc = this.bitcoinRPC
     let lc = this.lotionLightClient
-    let p2ss = await getSignatoryScriptHashFromPegZone(lc)
-    let p2ssAddress = await getCurrentP2ssAddress(lc, this.network)
+    let p2ssAddress: string = await lc.state.bitcoin.currentP2ssAddress
     await rpc.importAddress(
       /*address=*/ p2ssAddress,
       /*label=*/ '',
@@ -165,10 +164,14 @@ export class Relay {
     }
 
     // Now check for a completed transaction on the peg zone.
-    let signedTx: SignedTx | null = await lc.state.bitcoin.signedTx
+    let signedTx: SignedTx | null = await lc.state.bitcoin.signatorySets[
+      p2ssAddress
+    ].signedTx
     if (signedTx) {
       let validators = convertValidatorsToLotion(lc.validators)
-      let signatoryKeys: SignatoryMap = await lc.state.bitcoin.signatoryKeys
+      let signatoryKeys: SignatoryKeyMap = await lc.state.bitcoin.signatorySets[
+        p2ssAddress
+      ].signatoryKeys
       let finalizedTx = buildDisbursalTransaction(
         signedTx,
         validators,
@@ -212,7 +215,7 @@ export function convertValidatorsToLotion(
 function buildDisbursalTransaction(
   signedTx: SignedTx,
   validators: ValidatorMap,
-  signatoryKeys: SignatoryMap,
+  signatoryKeys: SignatoryKeyMap,
   network: BitcoinNetwork
 ) {
   // build tx

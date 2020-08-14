@@ -13,7 +13,8 @@ import {
   getSignatorySet,
   buildOutgoingTx,
   createOutput,
-  getVotingPowerThreshold
+  getVotingPowerThreshold,
+  getP2ssInfo
 } from './reserve'
 
 import {
@@ -29,6 +30,7 @@ import {
   isSignatoryCommitmentTx,
   isSignatureTx,
   BitcoinPegSignatureTx,
+  SignatorySet,
   BitcoinPegDepositTx
 } from './types'
 // TODO: get this from somewhere else
@@ -60,27 +62,15 @@ let bitcoinPeg: any = function(
     // bitcoin blockchain headers (so we can SPV-verify txs)
     state.chain = [initialHeader]
 
-    // commitments by validators to their secp256k1 pubkeys, which we can use
-    // on the bitcoin blockchain
-    state.signatoryKeys = {}
-
     // index of transactions we have already processed, to prevent replaying
     // relayed txs
     state.processedTxs = {}
 
-    // all UTXOs that the signatory set can spend (from deposit transactions
-    // and our own change outputs)
-    state.utxos = []
-
     // queue of withdrawals to be processed in the next disbursal
     state.withdrawals = []
 
-    // transaction being signed by the signatories
-    state.signingTx = null
-
-    // most recent tx completely signed by the signatories which can be relayed
-    state.signedTx = null
-    state.prevSignedTx = null
+    // map of p2ss address -> signatory set data
+    state.signatorySets = {}
   }
 
   function txHandler(
@@ -173,7 +163,7 @@ let bitcoinPeg: any = function(
       // TODO: compare against older validator sets
       let expectedP2ss = createOutput(
         context.validators,
-        state.signatoryKeys,
+        state.signatorySets[state.currentP2ssAddress].signatoryKeys,
         network
       )
       let depositOutput: any = bitcoinTx.outs[0]
@@ -205,6 +195,7 @@ let bitcoinPeg: any = function(
         address: coins.hashToAddress(addressHash),
         amount: depositOutput.value
       })
+      console.log(depositOutput)
       console.log(
         'minting ' +
           depositOutput.value +
@@ -213,7 +204,7 @@ let bitcoinPeg: any = function(
       )
 
       // add deposit outpoint to reserve wallet
-      state.utxos.push({
+      state.signatorySets[state.currentP2ssAddress].utxos.push({
         txid,
         index: 0,
         amount: depositOutput.value
@@ -257,8 +248,25 @@ let bitcoinPeg: any = function(
       throw Error('Invalid signature')
     }
 
-    // add signatory key to state
-    state.signatoryKeys[validatorKeyBase64] = signatoryKey
+    let previousSignatorySetKeys = state.currentP2ssAddress
+      ? state.signatorySets[state.currentP2ssAddress].signatoryKeys
+      : {}
+    // construct new signatory set
+    let newSignatorySet: SignatorySet = {
+      utxos: [],
+      validators: context.validators,
+      prevSignedTx: null,
+      signedTx: null,
+      signingTx: null,
+      signatoryKeys: {
+        ...previousSignatorySetKeys,
+        [validatorKeyBase64]: signatoryKey
+      }
+    }
+
+    let p2ssInfo = getP2ssInfo(newSignatorySet, network)
+    state.signatorySets[p2ssInfo.address] = newSignatorySet
+    state.currentP2ssAddress = p2ssInfo.address
   }
 
   // signature tx, add signatory's sig to outgoing transaction
@@ -268,7 +276,8 @@ let bitcoinPeg: any = function(
     context: BitcoinPegContext
   ) {
     let { signatoryIndex, signatures } = tx
-    let { signingTx, signatoryKeys } = state
+    let currentSignatorySet = state.signatorySets[state.currentP2ssAddress]
+    let { signingTx } = currentSignatorySet
 
     if (signingTx == null) {
       throw Error('No pending outgoing transaction')
@@ -297,17 +306,20 @@ let bitcoinPeg: any = function(
     if (signatory == null) {
       throw Error('Invalid signatory index')
     }
-    let signatoryKey = signatoryKeys[signatory.validatorKey]
+    let signatoryKey = currentSignatorySet.signatoryKeys[signatory.validatorKey]
 
     // compute hashes that should have been signed
     let bitcoinTx = buildOutgoingTx(
       signingTx,
       context.validators,
-      signatoryKeys,
+      currentSignatorySet.signatoryKeys,
       network
     )
     // TODO: handle dynamic signatory sets
-    let p2ss = createWitnessScript(context.validators, signatoryKeys)
+    let p2ss = createWitnessScript(
+      context.validators,
+      currentSignatorySet.signatoryKeys
+    )
     let sigHashes = signingTx.inputs.map((input, i) =>
       bitcoinTx.hashForWitnessV0(
         i,
@@ -333,15 +345,15 @@ let bitcoinPeg: any = function(
     let votingPowerThreshold = getVotingPowerThreshold(signatorySet)
     if (signingTx.signedVotingPower >= votingPowerThreshold) {
       // done signing, now the tx is valid and can be relayed
-      state.prevSignedTx = state.signedTx
-      state.signedTx = signingTx
-      state.signingTx = null
+      currentSignatorySet.prevSignedTx = currentSignatorySet.signedTx
+      currentSignatorySet.signedTx = signingTx
+      currentSignatorySet.signingTx = null
 
       // add change output to our UTXOs
       let txHash = bitcoinTx.getHash()
       let changeIndex = bitcoinTx.outs.length - 1
       let changeOutput: any = bitcoinTx.outs[changeIndex]
-      state.utxos.push({
+      currentSignatorySet.utxos.push({
         txid: txHash,
         index: changeIndex,
         amount: changeOutput.value
@@ -355,16 +367,17 @@ let bitcoinPeg: any = function(
     // TODO: in the future we won't disburse every time there is a withdrawal,
     //       we will wait until we're ready to make a checkpoint (e.g. a few
     //       times a day or when the signatory set has changed)
+    let currentSignatorySet = state.signatorySets[state.currentP2ssAddress]
     if (state.withdrawals.length === 0) return
-    if (state.signingTx != null) return
+    if (currentSignatorySet.signingTx != null) return
 
-    let inputs = state.utxos
-    state.utxos = []
+    let inputs = currentSignatorySet.utxos
+    currentSignatorySet.utxos = []
 
     let outputs = state.withdrawals
     state.withdrawals = []
 
-    state.signingTx = {
+    currentSignatorySet.signingTx = {
       inputs,
       outputs,
       signatures: [],
